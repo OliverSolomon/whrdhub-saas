@@ -1,0 +1,64 @@
+import { createClient } from "@/lib/supabase/server";
+
+export interface HubProfile {
+  id: string;
+  email: string | null;
+  full_name: string | null;
+  username: string | null;
+  title: string | null;
+  bio: string | null;
+  avatar_url: string | null;
+  is_hub_admin: boolean;
+  hub_onboarded: boolean;
+  county_network_id: string | null;
+}
+
+export interface CurrentUser {
+  id: string;
+  email: string | null;
+  profile: HubProfile | null;
+  membership: {
+    organization_id: string;
+    role: string;
+    organizations: { name: string; verification_status: string } | null;
+  } | null;
+}
+
+/** Returns the signed-in user with profile + primary org membership, or null. */
+export async function getCurrentUser(): Promise<CurrentUser | null> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return null;
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select(
+      "id, email, full_name, username, title, bio, avatar_url, is_hub_admin, hub_onboarded, county_network_id",
+    )
+    .eq("id", user.id)
+    .single();
+
+  const { data: membership } = await supabase
+    .from("org_memberships")
+    .select("organization_id, role, organizations(name, verification_status)")
+    .eq("user_id", user.id)
+    .limit(1)
+    .maybeSingle();
+
+  return {
+    id: user.id,
+    email: user.email ?? null,
+    profile: (profile as HubProfile) ?? null,
+    membership: membership
+      ? {
+          organization_id: membership.organization_id as string,
+          role: membership.role as string,
+          organizations: Array.isArray(membership.organizations)
+            ? (membership.organizations[0] ?? null)
+            : (membership.organizations as { name: string; verification_status: string } | null),
+        }
+      : null,
+  };
+}

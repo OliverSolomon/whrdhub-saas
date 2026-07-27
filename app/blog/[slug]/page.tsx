@@ -1,0 +1,89 @@
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { ArrowLeft } from "lucide-react";
+import { SiteHeader } from "@/components/site-header";
+import { SiteFooter } from "@/components/site-footer";
+import { Avatar } from "@/components/ui/field";
+import { createClient } from "@/lib/supabase/server";
+
+export default async function BlogReader({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}) {
+  const { slug } = await params;
+  const supabase = await createClient();
+
+  const { data: blog } = await supabase
+    .from("blogs")
+    .select("id, title, body, cover_image_url, is_hub, author_id, published_at, created_at, county_networks(name), organizations(name)")
+    .eq("slug", slug)
+    .eq("status", "approved")
+    .maybeSingle();
+
+  if (!blog) notFound();
+
+  let authorName = blog.is_hub ? "WHRD Hub" : "WHRD member";
+  let authorTitle: string | null = blog.is_hub ? "National office" : null;
+  let avatar: string | null = null;
+  if (!blog.is_hub && blog.author_id) {
+    const { data: p } = await supabase
+      .from("profiles")
+      .select("full_name, username, title, avatar_url")
+      .eq("id", blog.author_id)
+      .maybeSingle();
+    if (p) {
+      authorName = (p.full_name as string) || (p.username as string) || authorName;
+      authorTitle = (p.title as string) ?? null;
+      avatar = (p.avatar_url as string) ?? null;
+    }
+  }
+
+  const county = Array.isArray(blog.county_networks)
+    ? blog.county_networks[0]?.name
+    : (blog.county_networks as { name: string } | null)?.name;
+  const date = new Date(blog.published_at ?? blog.created_at).toLocaleDateString("en-KE", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+
+  return (
+    <div className="min-h-screen">
+      <SiteHeader />
+      <article className="max-w-3xl mx-auto px-4 sm:px-6 py-10">
+        <Link href="/blog" className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-ink">
+          <ArrowLeft className="w-4 h-4" /> All stories
+        </Link>
+
+        <h1 className="mt-4 text-3xl sm:text-4xl font-black text-ink leading-tight">{blog.title}</h1>
+
+        <div className="mt-5 flex items-center gap-3">
+          <Avatar name={authorName} src={avatar} size={44} />
+          <div className="text-sm">
+            <p className="font-semibold text-ink">{authorName}</p>
+            <p className="text-xs text-muted">
+              {[authorTitle, county].filter(Boolean).join(" · ")} {county || authorTitle ? "·" : ""} {date}
+            </p>
+          </div>
+        </div>
+
+        {blog.cover_image_url && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={blog.cover_image_url}
+            alt=""
+            className="mt-6 w-full rounded-2xl border border-line object-cover max-h-[420px]"
+          />
+        )}
+
+        <div className="mt-8 space-y-4 text-[17px] leading-relaxed text-ink">
+          {(blog.body as string).split(/\n{2,}/).map((para, i) => (
+            <p key={i} className="whitespace-pre-wrap">{para}</p>
+          ))}
+        </div>
+      </article>
+      <SiteFooter />
+    </div>
+  );
+}

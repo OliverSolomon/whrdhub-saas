@@ -1,26 +1,124 @@
 @import "tailwindcss";
 
+/* ─────────────────────────────────────────────────────────────
+   WHRD Hub brand system
+   Colours lifted from whrdhub.org:
+     purple  #734E9E   magenta #CE2087   cyan #60C2EA
+     ink     #212121   paper  #FAFAFA
+   ───────────────────────────────────────────────────────────── */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --paper: #faf9fb;
+  --surface: #ffffff;
+  --ink: #1c1522;
+  --muted: #6c6577;
+  --line: #ece8f1;
+
+  --purple: #734e9e;
+  --purple-600: #613f8a;
+  --purple-700: #4d2f73;   /* AA text on light purple tints */
+  --purple-050: #f3eefb;
+  --magenta: #ce2087;
+  --magenta-700: #9d1866;  /* AA text on light magenta tints */
+  --magenta-050: #fdeef7;
+  --cyan: #4bb6e2;
+  --cyan-050: #eaf7fd;
+  --cyan-700: #12718f;   /* AA-compliant cyan for text on light backgrounds */
+
+  --background: var(--paper);
+  --foreground: var(--ink);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-paper: var(--paper);
+  --color-surface: var(--surface);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+
+  --color-purple: var(--purple);
+  --color-purple-600: var(--purple-600);
+  --color-purple-700: var(--purple-700);
+  --color-purple-050: var(--purple-050);
+  --color-magenta: var(--magenta);
+  --color-magenta-700: var(--magenta-700);
+  --color-magenta-050: var(--magenta-050);
+  --color-cyan: var(--cyan);
+  --color-cyan-050: var(--cyan-050);
+  --color-cyan-700: var(--cyan-700);
+
   --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+
+  --radius-xl: 1rem;
+  --radius-2xl: 1.25rem;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  border-color: var(--line);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
+
+/* Subtle brand gradient used behind hero areas */
+.brand-wash {
+  background:
+    radial-gradient(120% 120% at 0% 0%, var(--purple-050) 0%, transparent 55%),
+    radial-gradient(120% 120% at 100% 0%, var(--cyan-050) 0%, transparent 50%);
+}
+
+/* Thin, tasteful scrollbars for the feed column */
+.feed-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+.feed-scroll::-webkit-scrollbar { width: 8px; }
+.feed-scroll::-webkit-scrollbar-thumb { background: var(--line); border-radius: 999px; }
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.rise { animation: rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+@keyframes burst {
+  0%   { opacity: 0; transform: scale(0.4); }
+  25%  { opacity: 1; transform: scale(1.15); }
+  60%  { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.35); }
+}
+.burst { animation: burst 0.8s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+/* ── Accessibility modes (toggled on <html> by the a11y widget) ───────────── */
+/* Larger text: scale is applied inline as --a11y-scale on <html>. */
+html { font-size: calc(100% * var(--a11y-scale, 1)); }
+
+/* Higher contrast: deepen text/borders and mute soft tints. */
+.a11y-contrast {
+  --ink: #000000;
+  --muted: #3a3540;
+  --line: #9a93a5;
+}
+.a11y-contrast .text-muted { color: #3a3540 !important; }
+
+/* Always underline links for easier scanning. */
+.a11y-links a { text-decoration: underline !important; text-underline-offset: 2px; }
+
+/* Reduce motion. */
+.a11y-motion *, .a11y-motion *::before, .a11y-motion *::after {
+  animation-duration: 0.001ms !important;
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+}
+
+/* Visible focus for keyboard users everywhere. */
+:focus-visible { outline: 3px solid var(--purple); outline-offset: 2px; border-radius: 4px; }
