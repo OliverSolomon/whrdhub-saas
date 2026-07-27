@@ -7,6 +7,7 @@ import { useReaction } from "@/lib/use-reaction";
 import { promptSignIn } from "@/lib/guest-reactions";
 import { timeAgo, cn } from "@/lib/utils";
 import { Avatar } from "@/components/ui/field";
+import { MediaBlock } from "@/components/feed/media-block";
 import type { FeedItem } from "@/lib/feed";
 
 type Stream =
