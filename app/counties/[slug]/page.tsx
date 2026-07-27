@@ -5,6 +5,7 @@ import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { createClient } from "@/lib/supabase/server";
 import { COUNTIES, countyBySlug } from "@/lib/counties";
+import { pageMeta } from "@/lib/seo";
 
 export function generateStaticParams() {
   return COUNTIES.map((c) => ({ slug: c.slug }));
@@ -13,7 +14,11 @@ export function generateStaticParams() {
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const c = countyBySlug(slug);
-  return { title: c ? `${c.name} — WHRD Hub` : "County — WHRD Hub" };
+  return pageMeta({
+    title: c ? `${c.name} County Network` : "County Network",
+    description: c?.description || `The Women Human Rights Defenders Hub network in ${c?.name ?? "Kenya"}.`,
+    path: `/counties/${slug}`,
+  });
 }
 
 export default async function CountyPage({

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, ShieldAlert, MapPin, Heart, ArrowUpRight, Sparkles } from "lucide-react";
+import { ArrowRight, MapPin, Heart, ArrowUpRight, Sparkles } from "lucide-react";
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { LandingModeSwitcher } from "@/components/landing/mode-switcher";
@@ -9,7 +9,6 @@ import { getFeed } from "@/lib/feed";
 import { getCurrentUser } from "@/lib/current-user";
 import { createClient } from "@/lib/supabase/server";
 import { SITE, PILLARS, LAWLOR_QUOTE } from "@/lib/data";
-import { links } from "@/lib/site-nav";
 import { latestVideoId, HUB_VIDEOS } from "@/lib/videos";
 
 const IMG = {
@@ -72,9 +71,9 @@ export default async function LandingPage() {
               <Link href={user ? "/dashboard" : "/signup"} className="inline-flex items-center gap-2 rounded-xl bg-purple text-white px-5 sm:px-6 py-3.5 text-sm font-bold hover:bg-purple-600 transition shadow-sm">
                 {user ? "Go to your dashboard" : "Join the Hub"} <ArrowRight className="w-4 h-4" />
               </Link>
-              <a href={links.reportAbuse} target="_blank" className="inline-flex items-center gap-2 rounded-xl bg-magenta text-white px-5 sm:px-6 py-3.5 text-sm font-bold hover:brightness-95 transition shadow-sm">
-                <ShieldAlert className="w-4 h-4" /> Report Abuse
-              </a>
+              <Link href="/feed" className="inline-flex items-center gap-2 rounded-xl bg-magenta text-white px-5 sm:px-6 py-3.5 text-sm font-bold hover:brightness-95 transition shadow-sm">
+                <Sparkles className="w-4 h-4" /> Live feed
+              </Link>
             </div>
 
             <div className="mt-8 rounded-3xl overflow-hidden border border-line shadow-xl shadow-purple/10">
@@ -219,9 +218,9 @@ export default async function LandingPage() {
               <Link href={user ? "/dashboard" : "/signup"} className="inline-flex items-center gap-2 rounded-xl bg-white text-purple-700 px-6 py-3.5 text-sm font-bold hover:bg-white/90">
                 {user ? "Go to dashboard" : "Join the Hub"} <ArrowRight className="w-4 h-4" />
               </Link>
-              <a href={links.reportAbuse} target="_blank" className="inline-flex items-center gap-2 rounded-xl border border-white/40 px-6 py-3.5 text-sm font-bold hover:bg-white/10">
-                <ShieldAlert className="w-4 h-4" /> Report Abuse
-              </a>
+              <Link href="/feed" className="inline-flex items-center gap-2 rounded-xl border border-white/40 px-6 py-3.5 text-sm font-bold hover:bg-white/10">
+                <Sparkles className="w-4 h-4" /> Live feed
+              </Link>
             </div>
           </div>
         </div>

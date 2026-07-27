@@ -6,6 +6,12 @@ export interface FeedAuthor {
   avatar_url: string | null;
 }
 
+export interface MediaItem {
+  type: "image" | "video" | "document";
+  url: string;
+  name: string;
+}
+
 export interface FeedItem {
   kind: "post" | "blog";
   id: string;
@@ -13,6 +19,7 @@ export interface FeedItem {
   title?: string | null;
   body: string; // post body, or blog excerpt
   image: string | null;
+  media: MediaItem[];
   author: FeedAuthor;
   org: string | null;
   county: string | null;
@@ -31,6 +38,7 @@ type Row = {
   slug?: string;
   excerpt?: string;
   image_urls?: string[] | null;
+  media?: MediaItem[] | null;
   cover_image_url?: string | null;
   is_hub: boolean;
   pinned: boolean;
@@ -58,7 +66,7 @@ export async function getFeed(limit = 40, userId?: string): Promise<FeedItem[]> 
     supabase
       .from("posts")
       .select(
-        "id, author_id, body, image_urls, is_hub, pinned, published_at, created_at, guest_name, guest_title, organizations(name), county_networks(name)",
+        "id, author_id, body, image_urls, media, is_hub, pinned, published_at, created_at, guest_name, guest_title, organizations(name), county_networks(name)",
       )
       .eq("status", "approved")
       .order("published_at", { ascending: false })
@@ -127,6 +135,7 @@ export async function getFeed(limit = 40, userId?: string): Promise<FeedItem[]> 
       title: r.title ?? null,
       body: r.kind === "post" ? (r.body ?? "") : (r.excerpt ?? ""),
       image: r.kind === "post" ? (r.image_urls?.[0] ?? null) : (r.cover_image_url ?? null),
+      media: r.kind === "post" ? ((r.media as MediaItem[]) ?? []) : [],
       author,
       org: one(r.organizations)?.name ?? null,
       county: one(r.county_networks)?.name ?? null,

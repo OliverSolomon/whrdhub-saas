@@ -5,12 +5,14 @@ import { SiteFooter } from "@/components/site-footer";
 import { Avatar } from "@/components/ui/field";
 import { SITE, PILLARS, LAWLOR_QUOTE } from "@/lib/data";
 import { LEADERSHIP, BOARD, STAFF, type Person } from "@/lib/team";
+import { pageMeta } from "@/lib/seo";
 import { PARTNERS } from "@/lib/site-content";
 
-export const metadata = {
-  title: "About Us — WHRD Hub",
+export const metadata = pageMeta({
+  title: "About Us",
   description: "The Women Human Rights Defenders Hub connects and protects women defenders across Kenya. Meet our board, staff, and partners.",
-};
+  path: "/about",
+});
 
 const HERO = "https://whrdhub.org/wp-content/uploads/2024/05/DSC_8300-scaled.jpg";
 

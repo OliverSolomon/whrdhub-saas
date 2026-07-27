@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
@@ -5,6 +6,22 @@ import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { Avatar } from "@/components/ui/field";
 import { createClient } from "@/lib/supabase/server";
+import { pageMeta, SITE_DESCRIPTION } from "@/lib/seo";
+
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+  const { slug } = await params;
+  const supabase = await createClient();
+  const { data: blog } = await supabase
+    .from("blogs")
+    .select("title, excerpt")
+    .eq("slug", slug)
+    .eq("status", "approved")
+    .maybeSingle();
+  if (!blog) return pageMeta({ title: "Story", path: `/blog/${slug}` });
+  const desc = (blog.excerpt as string)?.trim() || SITE_DESCRIPTION;
+  // The image is supplied automatically by the sibling opengraph-image.tsx.
+  return pageMeta({ title: blog.title as string, description: desc, path: `/blog/${slug}`, type: "article" });
+}
 
 export default async function BlogReader({
   params,
@@ -77,11 +94,15 @@ export default async function BlogReader({
           />
         )}
 
-        <div className="mt-8 space-y-4 text-[17px] leading-relaxed text-ink">
-          {(blog.body as string).split(/\n{2,}/).map((para, i) => (
-            <p key={i} className="whitespace-pre-wrap">{para}</p>
-          ))}
-        </div>
+        {/(<\/?[a-z][\s\S]*>)/i.test(blog.body as string) ? (
+          <div className="blog-content mt-8" dangerouslySetInnerHTML={{ __html: blog.body as string }} />
+        ) : (
+          <div className="blog-content mt-8">
+            {(blog.body as string).split(/\n{2,}/).map((para, i) => (
+              <p key={i} className="whitespace-pre-wrap">{para}</p>
+            ))}
+          </div>
+        )}
       </article>
       <SiteFooter />
     </div>

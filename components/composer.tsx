@@ -2,13 +2,15 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, PenLine, BookOpen, Send } from "lucide-react";
+import { Loader2, PenLine, BookOpen, Send, Youtube, Pin } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input, Label, Textarea } from "@/components/ui/field";
+import { Input, Label } from "@/components/ui/field";
 import { cn } from "@/lib/utils";
 import { createPost, createBlog } from "@/app/actions/content";
+import { MediaUploader, type MediaItem } from "@/components/composer/media-uploader";
+import { RichEditor } from "@/components/composer/rich-editor";
 
-export function Composer({ isHub = false }: { isHub?: boolean }) {
+export function Composer({ isHub = false, onDone }: { isHub?: boolean; onDone?: () => void }) {
   const router = useRouter();
   const [tab, setTab] = useState<"post" | "blog">("post");
   const [loading, setLoading] = useState(false);
@@ -17,96 +19,87 @@ export function Composer({ isHub = false }: { isHub?: boolean }) {
 
   // post
   const [body, setBody] = useState("");
-  const [imageUrl, setImageUrl] = useState("");
+  const [media, setMedia] = useState<MediaItem[]>([]);
+  const [youtube, setYoutube] = useState("");
+  const [pin, setPin] = useState(false);
   // blog
   const [title, setTitle] = useState("");
   const [excerpt, setExcerpt] = useState("");
   const [blogBody, setBlogBody] = useState("");
-  const [cover, setCover] = useState("");
+  const [cover, setCover] = useState<MediaItem[]>([]);
 
   const submit = async () => {
     setLoading(true);
     setError(null);
     const res =
       tab === "post"
-        ? await createPost(body, imageUrl ? [imageUrl] : [])
-        : await createBlog({ title, excerpt, body: blogBody, cover_image_url: cover || undefined });
+        ? await createPost(body, media, isHub ? { pinned: pin, youtubeUrl: youtube || undefined } : {})
+        : await createBlog({ title, excerpt, body: blogBody, cover_image_url: cover[0]?.url });
     setLoading(false);
-    if (res?.error) {
-      setError(res.error);
-      return;
-    }
+    if (res?.error) { setError(res.error); return; }
     setDone(true);
-    setBody("");
-    setImageUrl("");
-    setTitle("");
-    setExcerpt("");
-    setBlogBody("");
-    setCover("");
+    setBody(""); setMedia([]); setYoutube(""); setPin(false); setTitle(""); setExcerpt(""); setBlogBody(""); setCover([]);
     router.refresh();
+    onDone?.();
   };
 
   return (
     <div className="bg-surface rounded-2xl border border-line p-5">
       <div className="flex gap-2 mb-4">
-        <button
-          onClick={() => { setTab("post"); setDone(false); }}
-          className={cn("inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-semibold", tab === "post" ? "bg-purple text-white" : "text-muted hover:bg-purple-050")}
-        >
-          <PenLine className="w-4 h-4" /> Quick post
+        <button onClick={() => { setTab("post"); setDone(false); }}
+          className={cn("inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-semibold", tab === "post" ? "bg-purple text-white" : "text-muted hover:bg-purple-050")}>
+          <PenLine className="w-4 h-4" /> Post
         </button>
-        <button
-          onClick={() => { setTab("blog"); setDone(false); }}
-          className={cn("inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-semibold", tab === "blog" ? "bg-purple text-white" : "text-muted hover:bg-purple-050")}
-        >
+        <button onClick={() => { setTab("blog"); setDone(false); }}
+          className={cn("inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-semibold", tab === "blog" ? "bg-purple text-white" : "text-muted hover:bg-purple-050")}>
           <BookOpen className="w-4 h-4" /> Write a story
         </button>
       </div>
 
       {done ? (
         <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-4 text-sm text-emerald-800">
-          {isHub
-            ? "Published. It is live on the feed now."
-            : "Sent to the Hub for review. You will see it on the feed once it is approved."}
+          {isHub ? "Published. It is live on the feed now." : "Sent to the Hub for review. You will see it on the feed once it is approved."}
         </div>
       ) : tab === "post" ? (
         <div className="space-y-3">
-          <Textarea
-            rows={4}
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
+          <textarea rows={4} value={body} onChange={(e) => setBody(e.target.value)}
             placeholder="Share an update from your work or community..."
-          />
-          <Input value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="Image URL (optional)" />
+            className="w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-[15px] text-ink placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-purple/30 resize-y" />
+          <MediaUploader value={media} onChange={setMedia} />
+
+          {isHub && (
+            <div className="rounded-xl border border-purple-050 bg-purple-050/40 p-3 space-y-3">
+              <p className="text-xs font-bold uppercase tracking-wide text-purple-700">Hub tools</p>
+              <div>
+                <Label className="flex items-center gap-1.5"><Youtube className="w-4 h-4 text-magenta-700" /> Share a YouTube video</Label>
+                <Input value={youtube} onChange={(e) => setYoutube(e.target.value)} placeholder="Paste a YouTube link (optional)" />
+                <p className="text-xs text-muted mt-1">Your text above appears with the video.</p>
+              </div>
+              <button type="button" onClick={() => setPin((p) => !p)} aria-pressed={pin}
+                className={cn("flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold w-full", pin ? "border-purple bg-purple-050 text-purple-700" : "border-line bg-surface text-ink hover:bg-purple-050")}>
+                <Pin className="w-4 h-4" /> Pin to top of the feed
+                <span className={cn("ml-auto text-xs font-bold", pin ? "text-purple-700" : "text-muted")}>{pin ? "On" : "Off"}</span>
+              </button>
+            </div>
+          )}
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-4">
+          <div><Label>Title</Label><Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="The headline of your story" /></div>
+          <div><Label>Short summary <span className="text-muted font-normal">(optional)</span></Label><Input value={excerpt} onChange={(e) => setExcerpt(e.target.value)} placeholder="One line that appears in the feed" /></div>
           <div>
-            <Label>Title</Label>
-            <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="The headline of your story" />
+            <Label>Cover image <span className="text-muted font-normal">(optional)</span></Label>
+            <MediaUploader value={cover} onChange={(v) => setCover(v.slice(-1))} />
           </div>
-          <div>
-            <Label>Short summary</Label>
-            <Input value={excerpt} onChange={(e) => setExcerpt(e.target.value)} placeholder="One line that appears in the feed (optional)" />
-          </div>
-          <div>
-            <Label>Cover image URL <span className="text-muted font-normal">(optional)</span></Label>
-            <Input value={cover} onChange={(e) => setCover(e.target.value)} placeholder="https://..." />
-          </div>
-          <div>
-            <Label>Your story</Label>
-            <Textarea rows={10} value={blogBody} onChange={(e) => setBlogBody(e.target.value)} placeholder="Write freely. Leave a blank line between paragraphs." />
-          </div>
+          <div><Label>Your story</Label><RichEditor value={blogBody} onChange={setBlogBody} placeholder="Write freely. Use the toolbar for headings, quotes, lists, and links." /></div>
         </div>
       )}
 
       {error && <p className="mt-3 text-sm text-rose-600">{error}</p>}
 
       {!done && (
-        <div className="mt-4 flex items-center justify-between">
-          <p className="text-xs text-muted">
-            {isHub ? "Posting as the Hub. Goes live immediately." : "Reviewed by the Hub before it goes public."}
-          </p>
+        <div className="mt-4 flex items-center justify-between gap-3">
+          <p className="text-xs text-muted">{isHub ? "Posting as the Hub. Goes live immediately." : "Reviewed by the Hub before it goes public."}</p>
           <Button onClick={submit} disabled={loading}>
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Send className="w-4 h-4" /> {isHub ? "Publish" : "Submit"}</>}
           </Button>

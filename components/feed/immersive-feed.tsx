@@ -97,10 +97,12 @@ function PostCard({ item, signedIn, onShare }: { item: FeedItem; signedIn: boole
           <p className="px-4 pb-1 text-[15px] text-ink whitespace-pre-wrap leading-relaxed">{item.body}</p>
         )}
 
-        {item.image && (
+        {!isBlog && item.media.length > 0 ? (
+          <div className="px-4"><MediaBlock media={item.media} /></div>
+        ) : item.image ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={item.image} alt="" className="mt-2 w-full object-cover max-h-[26rem]" />
-        )}
+        ) : null}
       </div>
 
       {isBlog && (
@@ -153,10 +155,12 @@ export function ImmersiveFeed({
   feed,
   videos,
   signedIn,
+  showFab = true,
 }: {
   feed: FeedItem[];
   videos: string[];
   signedIn: boolean;
+  showFab?: boolean;
 }) {
   const { share, toast } = useShare();
   const onShare = (t: string, u: string) => share(t, u.startsWith("http") ? u : `${window.location.origin}${u}`);
@@ -176,7 +180,6 @@ export function ImmersiveFeed({
 
   return (
     <div className="mx-auto max-w-xl px-3 sm:px-0 pb-28 pt-4 space-y-4">
-      <p className="text-center text-xs text-muted">Double-tap a post to support it</p>
       {stream.map((s) =>
         s.type === "post" ? (
           <PostCard key={s.key} item={s.item} signedIn={signedIn} onShare={onShare} />
@@ -194,11 +197,13 @@ export function ImmersiveFeed({
         </div>
       )}
 
-      {/* Add post */}
-      <Link href={signedIn ? "/dashboard/compose" : "/login?next=/dashboard/compose"}
-        className="fixed bottom-6 right-6 z-40 inline-flex items-center gap-2 rounded-full bg-magenta text-white pl-4 pr-5 h-14 shadow-xl shadow-magenta/25 font-bold text-sm hover:brightness-95 active:scale-95 transition">
-        <PenLine className="w-5 h-5" /> <span className="hidden sm:inline">Post</span>
-      </Link>
+      {/* Add post (hidden when the host page provides its own composer) */}
+      {showFab && (
+        <Link href={signedIn ? "/dashboard/feed?compose=1" : "/login?next=/dashboard/feed"}
+          className="fixed bottom-6 right-6 z-40 inline-flex items-center gap-2 rounded-full bg-magenta text-white pl-4 pr-5 h-14 shadow-xl shadow-magenta/25 font-bold text-sm hover:brightness-95 active:scale-95 transition">
+          <PenLine className="w-5 h-5" /> <span className="hidden sm:inline">Post</span>
+        </Link>
+      )}
     </div>
   );
 }

@@ -4,11 +4,13 @@ import { ImmersiveFeed } from "@/components/feed/immersive-feed";
 import { getFeed } from "@/lib/feed";
 import { getCurrentUser } from "@/lib/current-user";
 import { HUB_VIDEOS } from "@/lib/videos";
+import { pageMeta } from "@/lib/seo";
 
-export const metadata = {
-  title: "Community Feed — WHRD Hub",
+export const metadata = pageMeta({
+  title: "Community Feed",
   description: "Verified updates, stories, and video from women human rights defenders and the Hub.",
-};
+  path: "/feed",
+});
 
 export default async function FeedPage() {
   const user = await getCurrentUser();

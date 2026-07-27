@@ -3,11 +3,13 @@ import { ArrowRight } from "lucide-react";
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { PILLARS } from "@/lib/data";
+import { pageMeta } from "@/lib/seo";
 
-export const metadata = {
-  title: "Our Work — WHRD Hub",
+export const metadata = pageMeta({
+  title: "Our Work",
   description: "The pillars that guide the Hub's work: safety, wellbeing, livelihoods, femtorship, movement, and institution building.",
-};
+  path: "/our-work",
+});
 
 const IMGS = [
   "https://whrdhub.org/wp-content/uploads/2024/05/WhatsApp-Image-2024-05-28-at-12.39.20.jpeg",

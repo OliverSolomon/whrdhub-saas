@@ -1,82 +1,84 @@
-import { Building2, ShieldCheck } from "lucide-react";
+import { Building2, ShieldCheck, Clock, Users } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { Pill } from "@/components/ui/pill";
-import { OrgVerifyControls } from "@/components/hub/org-verify-controls";
+import { StatBar, type StatItem } from "@/components/hub/stat-bar";
+import { DataTable, type Column } from "@/components/hub/data-table";
 import { VERIF_STATUS_META } from "@/lib/data";
-import { timeAgo } from "@/lib/utils";
 
-export const metadata = { title: "Organisations — WHRD Hub" };
+export const metadata = { title: "CBOs — WHRD Hub" };
+
+interface Org {
+  id: string; name: string; verification_status: string; members: number; county: string;
+}
 
 export default async function HubOrganizations() {
   const supabase = await createClient();
 
   const { data: orgs } = await supabase
     .from("organizations")
-    .select("id, name, description, verification_status, created_at, county_networks(name)")
+    .select("id, name, verification_status, created_at, county_networks(name)")
     .order("verification_status")
     .order("created_at", { ascending: false });
 
-  // Member counts per org.
   const { data: mems } = await supabase.from("org_memberships").select("organization_id");
   const counts = new Map<string, number>();
   for (const m of mems ?? []) counts.set(m.organization_id as string, (counts.get(m.organization_id as string) ?? 0) + 1);
 
-  const county = (v: unknown) =>
+  const countyName = (v: unknown) =>
     Array.isArray(v) ? (v[0] as { name: string })?.name : (v as { name: string } | null)?.name;
 
-  const all = orgs ?? [];
-  const pending = all.filter((o) => o.verification_status === "pending");
-  const rest = all.filter((o) => o.verification_status !== "pending");
+  const rows: Org[] = (orgs ?? []).map((o) => ({
+    id: o.id as string,
+    name: o.name as string,
+    verification_status: o.verification_status as string,
+    members: counts.get(o.id as string) ?? 0,
+    county: countyName(o.county_networks) ?? "No county",
+  }));
+
+  const verified = rows.filter((o) => o.verification_status === "verified").length;
+  const pending = rows.filter((o) => o.verification_status === "pending").length;
+  const totalMembers = Array.from(counts.values()).reduce((a, b) => a + b, 0);
+
+  const stats: StatItem[] = [
+    { label: "Total CBOs", value: rows.length, icon: Building2, caption: "in the network", tint: "bg-purple-050 text-purple" },
+    { label: "Verified", value: verified, icon: ShieldCheck, caption: "publishing content", captionTone: "up", tint: "bg-emerald-50 text-emerald-700" },
+    { label: "Awaiting", value: pending, icon: Clock, caption: pending > 0 ? "to verify" : "all clear", captionTone: pending > 0 ? "down" : "up", tint: "bg-amber-50 text-amber-700" },
+    { label: "Members", value: totalMembers, icon: Users, caption: "across all CBOs", tint: "bg-cyan-050 text-cyan-700" },
+  ];
+
+  const columns: Column<Org>[] = [
+    {
+      key: "name", header: "Organisation", width: "1.6fr",
+      cell: (o) => (
+        <div className="flex items-center gap-2.5 min-w-0">
+          <span className="w-8 h-8 rounded-lg bg-purple-050 text-purple grid place-items-center shrink-0"><Building2 className="w-4 h-4" /></span>
+          <span className="text-sm font-bold text-ink truncate">{o.name}</span>
+        </div>
+      ),
+    },
+    { key: "county", header: "County", width: "140px", cell: (o) => <span className="text-xs text-muted truncate">{o.county}</span> },
+    { key: "members", header: "Members", width: "110px", cell: (o) => <span className="text-xs text-muted">{o.members} member(s)</span> },
+    { key: "status", header: "Status", width: "160px", cell: (o) => <Pill tone={VERIF_STATUS_META[o.verification_status]?.tone ?? "slate"}>{VERIF_STATUS_META[o.verification_status]?.label ?? o.verification_status}</Pill> },
+  ];
 
   return (
-    <div className="space-y-7">
+    <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-black text-ink">Organisations</h1>
-        <p className="text-sm text-muted mt-1">Verify new CBOs so their members and content can go public.</p>
+        <h1 className="text-2xl font-black text-ink">CBOs</h1>
+        <p className="text-sm text-muted mt-1">Every community-based organisation across the network. Open one to see its members or verify it.</p>
       </div>
 
-      {pending.length > 0 && (
-        <section>
-          <h2 className="text-sm font-bold uppercase tracking-wider text-amber-700 mb-3">Awaiting verification</h2>
-          <div className="space-y-3">
-            {pending.map((o) => (
-              <div key={o.id} className="rounded-2xl border border-amber-200 bg-amber-50/60 p-5">
-                <div className="flex items-start justify-between gap-4 flex-wrap">
-                  <div className="min-w-0">
-                    <p className="font-bold text-ink flex items-center gap-2"><Building2 className="w-4 h-4 text-purple" /> {o.name}</p>
-                    <p className="text-xs text-muted mt-0.5">{county(o.county_networks) ?? "No county"} · added {timeAgo(o.created_at)} · {counts.get(o.id) ?? 0} member(s)</p>
-                    {o.description && <p className="text-sm text-ink mt-2 max-w-2xl">{o.description}</p>}
-                  </div>
-                  <OrgVerifyControls id={o.id} />
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
+      <StatBar items={stats} />
 
-      <section>
-        <h2 className="text-sm font-bold uppercase tracking-wider text-muted mb-3 flex items-center gap-1.5">
-          <ShieldCheck className="w-4 h-4" /> All organisations
-        </h2>
-        {rest.length === 0 ? (
-          <p className="text-sm text-muted">No verified organisations yet.</p>
-        ) : (
-          <div className="grid sm:grid-cols-2 gap-3">
-            {rest.map((o) => (
-              <div key={o.id} className="rounded-2xl border border-line bg-surface p-4">
-                <div className="flex items-start justify-between gap-2">
-                  <p className="font-bold text-ink">{o.name}</p>
-                  <Pill tone={VERIF_STATUS_META[o.verification_status]?.tone ?? "slate"}>
-                    {VERIF_STATUS_META[o.verification_status]?.label ?? o.verification_status}
-                  </Pill>
-                </div>
-                <p className="text-xs text-muted mt-1">{county(o.county_networks) ?? "No county"} · {counts.get(o.id) ?? 0} member(s)</p>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
+      <DataTable
+        columns={columns}
+        rows={rows}
+        rowKey={(o) => o.id}
+        rowHref={(o) => `/hub/organizations/${o.id}`}
+        emptyIcon={Building2}
+        emptyTitle="No CBOs yet"
+        emptySubtitle="Community-based organisations appear here as they register."
+      />
     </div>
   );
 }

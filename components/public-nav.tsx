@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
-import { ChevronDown, Menu, X, ShieldAlert, ArrowLeftRight, Sparkles } from "lucide-react";
+import { ChevronDown, Menu, X, ArrowLeftRight, Sparkles } from "lucide-react";
 import { NAV, links, type NavItem } from "@/lib/site-nav";
 import { cn } from "@/lib/utils";
 
@@ -77,25 +77,16 @@ export function PublicNav({ signedIn, isHubAdmin }: { signedIn: boolean; isHubAd
 
         <div className="hidden lg:flex items-center gap-2">
           <a
-            href={links.reportAbuse}
-            target="_blank"
-            className="inline-flex items-center gap-1.5 rounded-xl bg-magenta text-white px-4 h-10 text-sm font-bold hover:brightness-95 transition"
+            href={links.reportingDashboard}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-line px-3 h-10 text-sm font-semibold text-ink/80 hover:bg-purple-050"
+            title="Switch to the reporting platform"
           >
-            <ShieldAlert className="w-4 h-4" /> Report Abuse
+            <ArrowLeftRight className="w-4 h-4" /> Reporting
           </a>
           {signedIn ? (
-            <>
-              <a
-                href={links.reportingDashboard}
-                className="inline-flex items-center gap-1.5 rounded-xl border border-line px-3 h-10 text-sm font-semibold text-ink/80 hover:bg-purple-050"
-                title="Switch to the reporting platform"
-              >
-                <ArrowLeftRight className="w-4 h-4" /> Reporting
-              </a>
-              <Link href={isHubAdmin ? "/hub" : "/dashboard"} className="inline-flex items-center rounded-xl bg-purple text-white px-4 h-10 text-sm font-bold hover:bg-purple-600">
-                {isHubAdmin ? "Hub console" : "Dashboard"}
-              </Link>
-            </>
+            <Link href={isHubAdmin ? "/hub" : "/dashboard"} className="inline-flex items-center rounded-xl bg-purple text-white px-4 h-10 text-sm font-bold hover:bg-purple-600">
+              Dashboard
+            </Link>
           ) : (
             <Link href="/login" className="inline-flex items-center rounded-xl bg-purple text-white px-4 h-10 text-sm font-bold hover:bg-purple-600">
               Sign In
@@ -119,13 +110,10 @@ export function PublicNav({ signedIn, isHubAdmin }: { signedIn: boolean; isHubAd
               <img src={LOGO} alt="WHRD Hub" className="h-8 w-auto" />
               <button onClick={() => setMobile(false)} aria-label="Close"><X className="w-6 h-6" /></button>
             </div>
-            <a href={links.reportAbuse} target="_blank" className="flex items-center justify-center gap-1.5 rounded-xl bg-magenta text-white px-4 h-11 text-sm font-bold mb-2">
-              <ShieldAlert className="w-4 h-4" /> Report Abuse
-            </a>
-            <Link href="/feed" onClick={() => setMobile(false)} className="flex items-center justify-center gap-1.5 rounded-xl border border-purple/30 bg-purple-050 text-purple-700 px-4 h-11 text-sm font-bold mb-3">
-              <Sparkles className="w-4 h-4" /> Community Feed
-            </Link>
             <nav className="space-y-1">
+              <Link href="/feed" onClick={() => setMobile(false)} className="flex items-center gap-1.5 px-3 py-2.5 text-sm font-semibold text-ink">
+                <Sparkles className="w-4 h-4 text-purple" /> Feed
+              </Link>
               {NAV.map((item) =>
                 item.children ? (
                   <div key={item.label}>
@@ -157,7 +145,7 @@ export function PublicNav({ signedIn, isHubAdmin }: { signedIn: boolean; isHubAd
               {signedIn ? (
                 <>
                   <Link href={isHubAdmin ? "/hub" : "/dashboard"} onClick={() => setMobile(false)} className="block text-center rounded-xl bg-purple text-white px-4 h-11 leading-[2.75rem] text-sm font-bold">
-                    {isHubAdmin ? "Hub console" : "Dashboard"}
+                    Dashboard
                   </Link>
                   <a href={links.reportingDashboard} className="block text-center rounded-xl border border-line px-4 h-11 leading-[2.75rem] text-sm font-semibold">
                     Switch to reporting

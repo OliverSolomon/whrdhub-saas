@@ -4,11 +4,13 @@ import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { createClient } from "@/lib/supabase/server";
 import { timeAgo } from "@/lib/utils";
+import { pageMeta } from "@/lib/seo";
 
-export const metadata = {
-  title: "Stories — WHRD Hub",
+export const metadata = pageMeta({
+  title: "Stories",
   description: "Stories, updates, and record keeping from women human rights defenders across Kenya.",
-};
+  path: "/blog",
+});
 
 export default async function BlogIndex() {
   const supabase = await createClient();

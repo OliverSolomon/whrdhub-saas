@@ -3,11 +3,13 @@ import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { links } from "@/lib/site-nav";
 import { HUB_CHANNEL_URL } from "@/lib/videos";
+import { pageMeta } from "@/lib/seo";
 
-export const metadata = {
-  title: "Contact Us — WHRD Hub",
+export const metadata = pageMeta({
+  title: "Contact Us",
   description: "Get in touch with the Women Human Rights Defenders Hub.",
-};
+  path: "/contact",
+});
 
 export default function ContactPage() {
   return (

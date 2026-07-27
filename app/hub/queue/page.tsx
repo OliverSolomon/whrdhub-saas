@@ -67,7 +67,7 @@ export default async function ReviewQueue() {
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={b.cover_image_url} alt="" className="mt-3 rounded-xl border border-line max-h-56 object-cover w-full" />
               )}
-              <ReviewControls kind="blog" id={b.id} pinned={b.pinned} />
+              <ReviewControls kind="blog" id={b.id} pinned={b.pinned} title={b.title as string} excerpt={(b.excerpt as string) ?? ""} body="" />
             </article>
           ))}
 
@@ -86,7 +86,7 @@ export default async function ReviewQueue() {
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={p.image_urls[0]} alt="" className="mt-3 rounded-xl border border-line max-h-56 object-cover w-full" />
               )}
-              <ReviewControls kind="post" id={p.id} pinned={p.pinned} />
+              <ReviewControls kind="post" id={p.id} pinned={p.pinned} body={p.body as string} />
             </article>
           ))}
         </div>

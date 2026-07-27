@@ -2,11 +2,13 @@ import Link from "next/link";
 import { MapPin, ArrowUpRight } from "lucide-react";
 import { PageShell } from "@/components/page-hero";
 import { COUNTIES } from "@/lib/counties";
+import { pageMeta } from "@/lib/seo";
 
-export const metadata = {
-  title: "County Networks — WHRD Hub",
+export const metadata = pageMeta({
+  title: "County Networks",
   description: "The eight county networks where the Women Human Rights Defenders Hub works across Kenya.",
-};
+  path: "/counties",
+});
 
 export default function CountiesIndex() {
   return (

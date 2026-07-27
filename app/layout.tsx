@@ -4,6 +4,7 @@ import "./globals.css";
 import { AccessibilityWidget } from "@/components/accessibility-widget";
 import { SignInPrompt } from "@/components/signin-prompt";
 import { GuestReactionSync } from "@/components/guest-reaction-sync";
+import { SITE_URL, SITE_NAME, SITE_TAGLINE, SITE_DESCRIPTION } from "@/lib/seo";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -14,13 +15,37 @@ const geistSans = Geist({
 const LOGO = "https://whrdhub.org/wp-content/uploads/2025/05/imageedit_10_2063970092-600x198.png";
 
 export const metadata: Metadata = {
-  title: "WHRD Hub — a home for women human rights defenders",
-  description:
-    "The WHRD Hub connects women human rights defenders and their organisations across Kenya. Share updates, publish stories, find femtorship, and grow the movement.",
-  icons: {
-    icon: LOGO,
-    shortcut: LOGO,
-    apple: LOGO,
+  metadataBase: new URL(SITE_URL),
+  title: {
+    default: `${SITE_NAME} — ${SITE_TAGLINE}`,
+    template: `%s · ${SITE_NAME}`,
+  },
+  description: SITE_DESCRIPTION,
+  applicationName: SITE_NAME,
+  keywords: [
+    "WHRD Hub", "women human rights defenders", "Kenya", "femtorship", "mentorship",
+    "gender", "human rights", "TFGBV", "advocacy", "community",
+  ],
+  icons: { icon: LOGO, shortcut: LOGO, apple: LOGO },
+  alternates: { canonical: "/" },
+  openGraph: {
+    type: "website",
+    siteName: SITE_NAME,
+    title: `${SITE_NAME} — ${SITE_TAGLINE}`,
+    description: SITE_DESCRIPTION,
+    url: SITE_URL,
+    locale: "en_KE",
+    // Image comes from app/opengraph-image.tsx automatically.
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: `${SITE_NAME} — ${SITE_TAGLINE}`,
+    description: SITE_DESCRIPTION,
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: { index: true, follow: true, "max-image-preview": "large", "max-snippet": -1 },
   },
 };
 

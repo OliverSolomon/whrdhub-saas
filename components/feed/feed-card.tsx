@@ -3,6 +3,7 @@ import { BadgeCheck, MapPin, BookOpen, Pin } from "lucide-react";
 import { Avatar } from "@/components/ui/field";
 import { Pill } from "@/components/ui/pill";
 import { ReactionBar } from "@/components/feed/reaction-bar";
+import { MediaBlock } from "@/components/feed/media-block";
 import { timeAgo } from "@/lib/utils";
 import type { FeedItem } from "@/lib/feed";
 
@@ -50,14 +51,12 @@ export function FeedCard({ item, signedIn = false }: { item: FeedItem; signedIn?
         <p className="mt-3 text-sm text-ink whitespace-pre-wrap leading-relaxed">{item.body}</p>
       )}
 
-      {item.image && (
+      {!isBlog && item.media.length > 0 ? (
+        <MediaBlock media={item.media} />
+      ) : item.image ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={item.image}
-          alt=""
-          className="mt-3 w-full rounded-xl border border-line object-cover max-h-80"
-        />
-      )}
+        <img src={item.image} alt="" className="mt-3 w-full rounded-xl border border-line object-cover max-h-80" />
+      ) : null}
 
       {isBlog && (
         <Link

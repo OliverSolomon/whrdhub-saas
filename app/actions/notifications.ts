@@ -1,0 +1,14 @@
+"use server";
+
+import { createClient } from "@/lib/supabase/server";
+import { revalidatePath } from "next/cache";
+
+export async function markAllRead() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Please sign in." };
+  await supabase.from("notifications").update({ read: true }).eq("user_id", user.id).eq("read", false);
+  revalidatePath("/dashboard/notifications");
+  revalidatePath("/hub/notifications");
+  return { ok: true };
+}

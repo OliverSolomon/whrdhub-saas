@@ -1,8 +1,33 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentUser } from "@/lib/current-user";
 import { revalidatePath } from "next/cache";
+
+/** Notify every Hub admin that a new item is awaiting review. */
+async function notifyHubAdmins(kind: "post" | "blog", preview: string, author?: string | null) {
+  const admin = createAdminClient();
+  const { data: admins } = await admin
+    .from("profiles")
+    .select("id")
+    .eq("is_hub_admin", true);
+  const rows = (admins ?? []).map((a) => ({
+    user_id: a.id as string,
+    type: "content_submitted",
+    title: `New ${kind} awaiting review`,
+    body: `${author || "A member"}: ${preview}`,
+    link: kind === "blog" ? "/hub/blogs" : "/hub/posts",
+    content_type: kind,
+  }));
+  if (rows.length) await admin.from("notifications").insert(rows);
+}
+
+/** Send a notification to a single user. */
+async function notifyUser(userId: string, type: string, title: string, body: string, link: string, content_type?: string, content_id?: string) {
+  const admin = createAdminClient();
+  await admin.from("notifications").insert({ user_id: userId, type, title, body, link, content_type, content_id });
+}
 
 async function logAudit(
   content_type: string,
@@ -25,25 +50,57 @@ async function logAudit(
 
 // ── Member submissions ─────────────────────────────────────────────────────
 
-export async function createPost(body: string, imageUrls: string[] = []) {
+interface MediaItem { type: "image" | "video" | "document"; url: string; name: string }
+
+/** Normalise a YouTube URL to its watch URL, or null if it is not one. */
+function normalizeYouTube(url: string): string | null {
+  const u = url.trim();
+  if (!u) return null;
+  const m = u.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([\w-]{6,})/);
+  if (!m) return null;
+  return `https://www.youtube.com/watch?v=${m[1]}`;
+}
+
+export async function createPost(
+  body: string,
+  media: MediaItem[] = [],
+  opts: { pinned?: boolean; youtubeUrl?: string } = {},
+) {
   const user = await getCurrentUser();
   if (!user) return { error: "Please sign in." };
-  if (body.trim().length < 3) return { error: "Write a little more before posting." };
+  const isHub = !!user.profile?.is_hub_admin;
+
+  // A YouTube link (admin feature) becomes a video media item.
+  const finalMedia = [...media];
+  if (opts.youtubeUrl) {
+    const yt = normalizeYouTube(opts.youtubeUrl);
+    if (!yt) return { error: "That does not look like a valid YouTube link." };
+    finalMedia.push({ type: "video", url: yt, name: "YouTube video" });
+  }
+
+  if (body.trim().length < 3 && finalMedia.length === 0) return { error: "Write something or add media before posting." };
 
   const supabase = await createClient();
-  const isHub = !!user.profile?.is_hub_admin;
+  const imageUrls = finalMedia.filter((m) => m.type === "image").map((m) => m.url);
+  // Only Hub admins may pin, and only their own auto-published posts.
+  const pinned = isHub && !!opts.pinned;
   const { error } = await supabase.from("posts").insert({
     author_id: user.id,
     organization_id: user.membership?.organization_id ?? null,
     county_network_id: user.profile?.county_network_id ?? null,
     body: body.trim(),
     image_urls: imageUrls,
+    media: finalMedia,
     is_hub: isHub,
+    pinned,
     // Hub posts publish immediately; member posts wait for review.
     status: isHub ? "approved" : "pending",
   });
   if (error) return { error: error.message };
+  // Notify Hub admins that a post is awaiting review.
+  if (!isHub) await notifyHubAdmins("post", body.trim().slice(0, 60) || "New post", user.profile?.full_name);
   revalidatePath("/dashboard");
+  revalidatePath("/feed");
   revalidatePath("/");
   return { ok: true };
 }
@@ -73,6 +130,7 @@ export async function createBlog(input: {
     status: isHub ? "approved" : "pending",
   });
   if (error) return { error: error.message };
+  if (!isHub) await notifyHubAdmins("blog", input.title.trim(), user.profile?.full_name);
   revalidatePath("/dashboard");
   revalidatePath("/blog");
   revalidatePath("/");
@@ -97,7 +155,7 @@ export async function reviewContent(
   if (!hub) return { error: "Only the Hub can review content." };
   const supabase = await createClient();
   const table = kind === "post" ? "posts" : "blogs";
-  const { error } = await supabase
+  const { data: row, error } = await supabase
     .from(table)
     .update({
       status: decision,
@@ -105,12 +163,54 @@ export async function reviewContent(
       reviewed_by: hub.id,
       // published_at is set by the DB trigger on approval
     })
-    .eq("id", id);
+    .eq("id", id)
+    .select("author_id, title, body, slug")
+    .single();
   if (error) return { error: error.message };
   await logAudit(kind, id, decision, notes);
+
+  // Notify the author of the outcome.
+  const authorId = row?.author_id as string | null;
+  if (authorId) {
+    const label = kind === "blog" ? (row?.title as string) || "your story" : (row?.body as string)?.slice(0, 50) || "your post";
+    if (decision === "approved") {
+      await notifyUser(authorId, "content_published", `Your ${kind} is live`, `"${label}" has been published to the feed.`,
+        kind === "blog" ? `/blog/${row?.slug}` : "/feed", kind, id);
+    } else {
+      await notifyUser(authorId, "content_declined", `Your ${kind} was not approved`, notes || `"${label}" was reviewed and not published.`, "/profile", kind, id);
+    }
+  }
+
   revalidatePath("/hub");
+  revalidatePath("/hub/posts");
+  revalidatePath("/hub/blogs");
   revalidatePath("/");
   revalidatePath("/blog");
+  revalidatePath("/feed");
+  return { ok: true };
+}
+
+/** Admin edits a post/blog before publishing. */
+export async function editContent(
+  kind: "post" | "blog",
+  id: string,
+  patch: { body?: string; title?: string; excerpt?: string; cover_image_url?: string | null },
+) {
+  const hub = await requireHub();
+  if (!hub) return { error: "Only the Hub can edit content." };
+  const supabase = await createClient();
+  const table = kind === "post" ? "posts" : "blogs";
+  const update = kind === "post"
+    ? { body: patch.body }
+    : { title: patch.title, excerpt: patch.excerpt, body: patch.body, cover_image_url: patch.cover_image_url ?? null };
+  const { error } = await supabase.from(table).update(update).eq("id", id);
+  if (error) return { error: error.message };
+  await logAudit(kind, id, "edited");
+  revalidatePath("/hub");
+  revalidatePath("/hub/posts");
+  revalidatePath("/hub/blogs");
+  revalidatePath("/feed");
+  revalidatePath("/");
   return { ok: true };
 }
 
@@ -123,6 +223,9 @@ export async function togglePin(kind: "post" | "blog", id: string, pinned: boole
   if (error) return { error: error.message };
   await logAudit(kind, id, pinned ? "pinned" : "unpinned");
   revalidatePath("/hub");
+  revalidatePath("/hub/posts");
+  revalidatePath("/hub/blogs");
+  revalidatePath("/feed");
   revalidatePath("/");
   return { ok: true };
 }

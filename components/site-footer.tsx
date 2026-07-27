@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { ShieldAlert, MapPin, Mail, Phone } from "lucide-react";
-import { NAV, links } from "@/lib/site-nav";
+import { MapPin, Mail, Phone } from "lucide-react";
+import { NAV } from "@/lib/site-nav";
 import { SOCIALS } from "@/lib/team";
 import { CONTACT } from "@/lib/site-content";
 import { FacebookIcon, XIcon, InstagramIcon, LinkedinIcon, YoutubeIcon } from "@/components/social-icons";
@@ -27,12 +27,9 @@ export function SiteFooter() {
               A home for women human rights defenders across Kenya. Share your work, publish your
               stories, and grow through femtorship.
             </p>
-            <a href={links.reportAbuse} target="_blank" className="mt-5 inline-flex items-center gap-1.5 rounded-xl bg-magenta text-white px-4 h-10 text-sm font-bold hover:brightness-95">
-              <ShieldAlert className="w-4 h-4" /> Report Abuse
-            </a>
 
             {/* Social icons */}
-            <div className="mt-5 flex items-center gap-2">
+            <div className="mt-6 flex items-center gap-2">
               {SOCIAL_LINKS.map(({ href, label, Icon }) => (
                 <a
                   key={label}
