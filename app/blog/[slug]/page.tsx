@@ -5,6 +5,7 @@ import { ArrowLeft } from "lucide-react";
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { Avatar } from "@/components/ui/field";
+import { BlogGallery } from "@/components/blog/blog-gallery";
 import { createClient } from "@/lib/supabase/server";
 import { pageMeta, SITE_DESCRIPTION } from "@/lib/seo";
 
@@ -33,7 +34,7 @@ export default async function BlogReader({
 
   const { data: blog } = await supabase
     .from("blogs")
-    .select("id, title, body, cover_image_url, is_hub, author_id, published_at, created_at, county_networks(name), organizations(name)")
+    .select("id, title, body, cover_image_url, gallery, is_hub, author_id, published_at, created_at, county_networks(name), organizations(name)")
     .eq("slug", slug)
     .eq("status", "approved")
     .maybeSingle();
@@ -103,6 +104,8 @@ export default async function BlogReader({
             ))}
           </div>
         )}
+
+        <BlogGallery images={Array.isArray(blog.gallery) ? (blog.gallery as string[]) : []} />
       </article>
       <SiteFooter />
     </div>

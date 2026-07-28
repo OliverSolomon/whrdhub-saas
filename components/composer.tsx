@@ -2,13 +2,13 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, PenLine, BookOpen, Send, Youtube, Pin } from "lucide-react";
+import { Loader2, PenLine, BookOpen, Send, Youtube, Pin, FileEdit } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/field";
 import { cn } from "@/lib/utils";
 import { createPost, createBlog } from "@/app/actions/content";
 import { MediaUploader, type MediaItem } from "@/components/composer/media-uploader";
-import { RichEditor } from "@/components/composer/rich-editor";
+import { RichText } from "@/components/editor/rich-text";
 
 export function Composer({ isHub = false, onDone }: { isHub?: boolean; onDone?: () => void }) {
   const router = useRouter();
@@ -28,15 +28,18 @@ export function Composer({ isHub = false, onDone }: { isHub?: boolean; onDone?: 
   const [blogBody, setBlogBody] = useState("");
   const [cover, setCover] = useState<MediaItem[]>([]);
 
-  const submit = async () => {
+  const [doneKind, setDoneKind] = useState<"published" | "review" | "draft">("review");
+
+  const submit = async (asDraft = false) => {
     setLoading(true);
     setError(null);
     const res =
       tab === "post"
         ? await createPost(body, media, isHub ? { pinned: pin, youtubeUrl: youtube || undefined } : {})
-        : await createBlog({ title, excerpt, body: blogBody, cover_image_url: cover[0]?.url });
+        : await createBlog({ title, excerpt, body: blogBody, cover_image_url: cover[0]?.url }, { asDraft });
     setLoading(false);
     if (res?.error) { setError(res.error); return; }
+    setDoneKind(isHub ? "published" : asDraft ? "draft" : "review");
     setDone(true);
     setBody(""); setMedia([]); setYoutube(""); setPin(false); setTitle(""); setExcerpt(""); setBlogBody(""); setCover([]);
     router.refresh();
@@ -58,7 +61,11 @@ export function Composer({ isHub = false, onDone }: { isHub?: boolean; onDone?: 
 
       {done ? (
         <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-4 text-sm text-emerald-800">
-          {isHub ? "Published. It is live on the feed now." : "Sent to the Hub for review. You will see it on the feed once it is approved."}
+          {doneKind === "published"
+            ? "Published. It is live on the feed now."
+            : doneKind === "draft"
+            ? "Saved as a draft. Find it under Profile → My Activity to keep editing or submit it."
+            : "Sent to the Hub for review. You will see it on the feed once it is approved."}
         </div>
       ) : tab === "post" ? (
         <div className="space-y-3">
@@ -91,18 +98,27 @@ export function Composer({ isHub = false, onDone }: { isHub?: boolean; onDone?: 
             <Label>Cover image <span className="text-muted font-normal">(optional)</span></Label>
             <MediaUploader value={cover} onChange={(v) => setCover(v.slice(-1))} />
           </div>
-          <div><Label>Your story</Label><RichEditor value={blogBody} onChange={setBlogBody} placeholder="Write freely. Use the toolbar for headings, quotes, lists, and links." /></div>
+          <div><Label>Your story</Label><RichText value={blogBody} onChange={setBlogBody} placeholder="Write freely. Use the toolbar for headings, quotes, lists, links, and images." /></div>
         </div>
       )}
 
       {error && <p className="mt-3 text-sm text-rose-600">{error}</p>}
 
       {!done && (
-        <div className="mt-4 flex items-center justify-between gap-3">
-          <p className="text-xs text-muted">{isHub ? "Posting as the Hub. Goes live immediately." : "Reviewed by the Hub before it goes public."}</p>
-          <Button onClick={submit} disabled={loading}>
-            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Send className="w-4 h-4" /> {isHub ? "Publish" : "Submit"}</>}
-          </Button>
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+          <p className="text-xs text-muted">
+            {isHub ? "Posting as the Hub. Goes live immediately." : tab === "blog" ? "Save a draft, or submit for the Hub to review." : "Reviewed by the Hub before it goes public."}
+          </p>
+          <div className="flex items-center gap-2">
+            {!isHub && tab === "blog" && (
+              <Button variant="outline" onClick={() => submit(true)} disabled={loading}>
+                <FileEdit className="w-4 h-4" /> Save draft
+              </Button>
+            )}
+            <Button onClick={() => submit(false)} disabled={loading}>
+              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Send className="w-4 h-4" /> {isHub ? "Publish" : tab === "blog" ? "Submit for review" : "Submit"}</>}
+            </Button>
+          </div>
         </div>
       )}
     </div>

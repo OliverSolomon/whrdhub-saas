@@ -103,6 +103,16 @@ body {
 .prose-editor ul { list-style: disc; padding-left: 1.4rem; }
 .prose-editor ol { list-style: decimal; padding-left: 1.4rem; }
 .prose-editor a { color: var(--purple); text-decoration: underline; }
+.prose-editor p { margin: 0.5em 0; }
+.prose-editor img { max-width: 100%; height: auto; margin: 0.8em 0; border-radius: 0.75rem; }
+/* TipTap (ProseMirror) placeholder for the first empty line */
+.prose-editor p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: var(--muted);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
 
 /* Published blog HTML */
 .blog-content { color: var(--ink); line-height: 1.75; font-size: 1.06rem; }

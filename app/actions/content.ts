@@ -105,36 +105,82 @@ export async function createPost(
   return { ok: true };
 }
 
-export async function createBlog(input: {
-  title: string;
-  excerpt: string;
-  body: string;
-  cover_image_url?: string;
-}) {
+export async function createBlog(
+  input: { title: string; excerpt: string; body: string; cover_image_url?: string },
+  opts: { asDraft?: boolean } = {},
+) {
   const user = await getCurrentUser();
   if (!user) return { error: "Please sign in." };
   if (input.title.trim().length < 3) return { error: "Give your story a title." };
-  if (input.body.trim().length < 30) return { error: "Your story needs a little more content." };
+  const isHub = !!user.profile?.is_hub_admin;
+  // Drafts can be a work in progress; anything going out for review needs body.
+  if (!opts.asDraft && input.body.replace(/<[^>]+>/g, "").trim().length < 30) {
+    return { error: "Your story needs a little more content before it goes out." };
+  }
+
+  // Members: draft or submit for review. Hub admins publish immediately.
+  const status = isHub ? "approved" : opts.asDraft ? "draft" : "pending";
 
   const supabase = await createClient();
-  const isHub = !!user.profile?.is_hub_admin;
-  const { error } = await supabase.from("blogs").insert({
+  const { data, error } = await supabase.from("blogs").insert({
     author_id: user.id,
     organization_id: user.membership?.organization_id ?? null,
     county_network_id: user.profile?.county_network_id ?? null,
     title: input.title.trim(),
-    excerpt: input.excerpt.trim() || input.body.trim().slice(0, 160),
+    excerpt: input.excerpt.trim() || input.body.replace(/<[^>]+>/g, "").trim().slice(0, 160),
     body: input.body.trim(),
     cover_image_url: input.cover_image_url || null,
     is_hub: isHub,
-    status: isHub ? "approved" : "pending",
-  });
+    status,
+  }).select("id").single();
   if (error) return { error: error.message };
-  if (!isHub) await notifyHubAdmins("blog", input.title.trim(), user.profile?.full_name);
+  if (status === "pending") await notifyHubAdmins("blog", input.title.trim(), user.profile?.full_name);
   revalidatePath("/dashboard");
   revalidatePath("/blog");
   revalidatePath("/");
-  return { ok: true };
+  return { ok: true, id: data?.id as string | undefined, status };
+}
+
+/**
+ * Author edits their own story while it is a draft or was declined, and can
+ * (re)submit it for review. Never touches someone else's content or a story
+ * that is already live/pending.
+ */
+export async function updateOwnBlog(
+  id: string,
+  input: { title: string; excerpt: string; body: string; cover_image_url?: string | null },
+  opts: { submit?: boolean } = {},
+) {
+  const user = await getCurrentUser();
+  if (!user) return { error: "Please sign in." };
+  if (input.title.trim().length < 3) return { error: "Give your story a title." };
+  const supabase = await createClient();
+
+  const { data: existing } = await supabase.from("blogs").select("author_id, status").eq("id", id).maybeSingle();
+  if (!existing || existing.author_id !== user.id) return { error: "You can only edit your own stories." };
+  if (!["draft", "rejected"].includes(existing.status as string)) {
+    return { error: "This story is in review or already published and can't be edited here." };
+  }
+  if (opts.submit && input.body.replace(/<[^>]+>/g, "").trim().length < 30) {
+    return { error: "Your story needs a little more content before it goes out." };
+  }
+
+  const status = opts.submit ? "pending" : "draft";
+  const update: Record<string, unknown> = {
+    title: input.title.trim(),
+    excerpt: input.excerpt.trim() || input.body.replace(/<[^>]+>/g, "").trim().slice(0, 160),
+    body: input.body.trim(),
+    cover_image_url: input.cover_image_url ?? null,
+    status,
+  };
+  // Clear the old decline note when resubmitting for a fresh review.
+  if (opts.submit) update.review_notes = null;
+  const { error } = await supabase.from("blogs").update(update).eq("id", id);
+  if (error) return { error: error.message };
+  if (opts.submit) await notifyHubAdmins("blog", input.title.trim(), user.profile?.full_name);
+  revalidatePath("/dashboard");
+  revalidatePath("/profile");
+  return { ok: true, status };
 }
 
 // ── Hub moderation ─────────────────────────────────────────────────────────

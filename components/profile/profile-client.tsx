@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { User, Heart, Activity, Shield, Eye, Loader2, Trash2, FileText, BookOpen, ExternalLink, ShieldCheck, ArrowUpRight } from "lucide-react";
+import { User, Heart, Activity, Shield, Eye, Loader2, Trash2, FileText, BookOpen, ExternalLink, ShieldCheck, ArrowUpRight, Pencil } from "lucide-react";
 import { Input, Label, Textarea } from "@/components/ui/field";
 import { cn } from "@/lib/utils";
 import { CONTENT_STATUS_META } from "@/lib/data";
@@ -192,6 +192,11 @@ function ActivitySection({ posts, blogs, reacted }: { posts: Content[]; blogs: C
                 <BookOpen className="w-4 h-4 text-purple shrink-0" />
                 <p className="text-sm text-ink truncate flex-1 font-medium">{b.title}</p>
                 <Pill tone={CONTENT_STATUS_META[b.status]?.tone ?? "slate"}>{CONTENT_STATUS_META[b.status]?.label ?? b.status}</Pill>
+                {(b.status === "draft" || b.status === "rejected") && (
+                  <Link href={`/dashboard/write/${b.id}`} className="inline-flex items-center gap-1 text-xs font-bold text-purple hover:text-purple-700 px-1.5">
+                    <Pencil className="w-3.5 h-3.5" /> {b.status === "rejected" ? "Revise" : "Edit"}
+                  </Link>
+                )}
                 <button onClick={() => del("blog", b.id)} disabled={busy === b.id} className="text-muted hover:text-rose-600 p-1" aria-label="Delete">
                   {busy === b.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
                 </button>
