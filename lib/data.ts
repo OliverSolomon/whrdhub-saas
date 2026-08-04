@@ -6,7 +6,7 @@
 
 export const SITE = {
   name: "WHRD Hub",
-  tagline: "A home for women human rights defenders",
+  tagline: "A home for women human rights defenders across Kenya & Beyond",
   vision:
     "An empowered, just, and equitable society where women human rights defenders thrive to their full potential.",
   mission:

@@ -5,7 +5,7 @@ import { SOCIALS } from "@/lib/team";
 import { CONTACT } from "@/lib/site-content";
 import { FacebookIcon, XIcon, InstagramIcon, LinkedinIcon, YoutubeIcon } from "@/components/social-icons";
 
-const LOGO = "https://whrdhub.org/wp-content/uploads/2025/05/imageedit_10_2063970092-600x198.png";
+const LOGO = "/main-logo.png";
 
 const SOCIAL_LINKS = [
   { href: SOCIALS.facebook, label: "Facebook", Icon: FacebookIcon },
@@ -24,8 +24,8 @@ export function SiteFooter() {
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={LOGO} alt="WHRD Hub" className="h-16 sm:h-20 w-auto" />
             <p className="mt-4 text-sm text-muted max-w-xs leading-relaxed">
-              A home for women human rights defenders across Kenya. Share your work, publish your
-              stories, and grow through femtorship.
+              A home for women human rights defenders across Kenya &amp; beyond. Share your work,
+              publish your stories, and grow through femtorship.
             </p>
 
             {/* Social icons */}

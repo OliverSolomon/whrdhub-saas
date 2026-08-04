@@ -75,8 +75,45 @@ export default function AboutPage() {
         </div>
       </section>
 
+      {/* Our impact */}
+      <section id="impact" className="bg-gradient-to-br from-purple-050 via-[#f4f0fb] to-cyan-050 border-y border-line scroll-mt-20">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-16">
+          <div className="max-w-2xl">
+            <p className="text-xs font-bold uppercase tracking-wider text-magenta-700">Our impact</p>
+            <h2 className="mt-2 text-3xl font-black text-ink">The difference we are making together</h2>
+            <p className="mt-3 text-muted">Across Kenya and beyond, the Hub protects, heals, and nurtures the women who defend everyone else&apos;s rights.</p>
+          </div>
+          <div className="mt-8 grid grid-cols-2 lg:grid-cols-4 gap-4">
+            {[
+              { k: "9", v: "County networks", d: "Grassroots defender networks connected across the country" },
+              { k: "6", v: "Pillars of protection", d: "Safety, wellbeing, livelihoods, femtorship, movement, institutions" },
+              { k: "3", v: "Countries convened", d: "Protection networks strengthened across Kenya, Uganda & Tanzania" },
+              { k: "1", v: "Shared movement", d: "One platform uniting defenders, CBOs, and the national office" },
+            ].map((s) => (
+              <div key={s.v} className="rounded-2xl border border-line bg-surface p-5">
+                <p className="text-4xl font-black text-purple">{s.k}</p>
+                <p className="mt-1 font-bold text-ink text-sm">{s.v}</p>
+                <p className="mt-1 text-xs text-muted leading-relaxed">{s.d}</p>
+              </div>
+            ))}
+          </div>
+          <div className="mt-6 grid sm:grid-cols-3 gap-4">
+            {[
+              { t: "Safety & security", b: "Multi-day safety and security trainings equip defenders to assess risk and respond to threats online and offline." },
+              { t: "Femtorship", b: "Defenders are matched with femtors, growing the next generation of women leaders and activists." },
+              { t: "Solidarity in crisis", b: "When defenders face threats, the network responds together with protection, wellbeing, and legal support." },
+            ].map((h) => (
+              <div key={h.t} className="rounded-2xl bg-surface/70 border border-line p-5">
+                <h3 className="font-bold text-ink">{h.t}</h3>
+                <p className="mt-1.5 text-sm text-muted leading-relaxed">{h.b}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* Approach / pillars */}
-      <section id="impact" className="bg-paper border-y border-line scroll-mt-20">
+      <section id="approach" className="bg-paper border-y border-line scroll-mt-20">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-16">
           <div className="max-w-2xl">
             <p className="text-xs font-bold uppercase tracking-wider text-magenta-700">Our approach</p>

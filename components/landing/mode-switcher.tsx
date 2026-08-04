@@ -7,7 +7,7 @@ import { ImmersiveFeed } from "@/components/feed/immersive-feed";
 import { cn } from "@/lib/utils";
 import type { FeedItem } from "@/lib/feed";
 
-const LOGO = "https://whrdhub.org/wp-content/uploads/2025/05/imageedit_10_2063970092-600x198.png";
+const LOGO = "/main-logo.png";
 
 function Segmented({ mode, setMode }: { mode: "site" | "feed"; setMode: (m: "site" | "feed") => void }) {
   return (

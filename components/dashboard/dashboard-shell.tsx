@@ -14,7 +14,7 @@ import { links } from "@/lib/site-nav";
 import { cn } from "@/lib/utils";
 import { RoleSwitcher } from "@/components/dashboard/role-switcher";
 
-const LOGO = "https://whrdhub.org/wp-content/uploads/2025/05/imageedit_10_2063970092-600x198.png";
+const LOGO = "/main-logo.png";
 
 const ICONS = {
   overview: LayoutGrid, feed: Sparkles, posts: FileText, messages: MessageCircle,
@@ -74,8 +74,7 @@ export function DashboardShell({
       <div className="flex items-center justify-between px-4 h-16 border-b border-line">
         <Link href="/" className="flex items-center gap-2 min-w-0">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={LOGO} alt="WHRD Hub" className="h-8 w-auto" />
-          {!collapsed && <span className="font-black text-ink text-sm truncate hidden sm:block">WHRD Hub</span>}
+          <img src={LOGO} alt="WHRD Hub" className={cn("w-auto object-contain", collapsed ? "h-8" : "h-9")} />
         </Link>
         <button onClick={() => setCollapsed((c) => !c)} className="hidden lg:inline-flex text-muted hover:text-ink p-1 rounded-lg hover:bg-purple-050" aria-label="Toggle sidebar">
           {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}

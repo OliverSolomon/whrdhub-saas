@@ -12,7 +12,8 @@ import { SITE, PILLARS, LAWLOR_QUOTE } from "@/lib/data";
 import { latestVideoId, HUB_VIDEOS } from "@/lib/videos";
 
 const IMG = {
-  hero: "https://whrdhub.org/wp-content/uploads/2025/03/IMG_0764-scaled.jpg",
+  // Same photo used as the hero on the About page, per request.
+  hero: "https://whrdhub.org/wp-content/uploads/2024/05/DSC_8300-scaled.jpg",
   roundtable: "https://whrdhub.org/wp-content/uploads/2024/09/0I2A7208-scaled.jpg",
   strategy: "https://whrdhub.org/wp-content/uploads/2024/05/DSC_8300-scaled.jpg",
   training: "https://whrdhub.org/wp-content/uploads/2024/05/WhatsApp-Image-2024-05-28-at-12.39.20.jpeg",
@@ -64,7 +65,7 @@ export default async function LandingPage() {
               <Sparkles className="w-3.5 h-3.5" /> The movement, now online
             </span>
             <h1 className="mt-5 text-4xl sm:text-5xl lg:text-6xl font-black leading-[1.03] text-ink">
-              A home for women <span className="text-purple">human rights defenders</span> across Kenya
+              A home for women <span className="text-purple">human rights defenders</span> across Kenya &amp; Beyond
             </h1>
             <p className="mt-5 text-base sm:text-lg text-muted leading-relaxed max-w-xl">{SITE.mission}</p>
             <div className="mt-8 flex flex-wrap gap-3">
@@ -107,12 +108,11 @@ export default async function LandingPage() {
 
       {/* ── STATS BAND ───────────────────────────────────────────── */}
       <section className="bg-purple text-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-10 grid grid-cols-2 lg:grid-cols-4 gap-8 text-center">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-10 grid grid-cols-3 gap-8 text-center">
           {[
-            { k: "8", v: "County networks" },
+            { k: "9", v: "County networks" },
             { k: "6", v: "Pillars of protection" },
             { k: "1", v: "Shared movement" },
-            { k: "24/7", v: "Support and solidarity" },
           ].map((s) => (
             <div key={s.v}>
               <p className="text-4xl font-black">{s.k}</p>

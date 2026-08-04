@@ -13,7 +13,7 @@ const fromVercel = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` 
 export const SITE_URL = (fromEnv || fromVercel || "http://localhost:3000").replace(/\/$/, "");
 
 export const SITE_NAME = "WHRD Hub";
-export const SITE_TAGLINE = "A home for women human rights defenders";
+export const SITE_TAGLINE = "A home for women human rights defenders across Kenya & Beyond";
 export const SITE_DESCRIPTION =
   "The WHRD Hub connects women human rights defenders and their organisations across Kenya. Share updates, publish stories, find femtorship, and grow the movement.";
 

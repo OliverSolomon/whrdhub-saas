@@ -6,7 +6,7 @@ import { ChevronDown, Menu, X, ArrowLeftRight, Sparkles } from "lucide-react";
 import { NAV, links, type NavItem } from "@/lib/site-nav";
 import { cn } from "@/lib/utils";
 
-const LOGO = "https://whrdhub.org/wp-content/uploads/2025/05/imageedit_10_2063970092-600x198.png";
+const LOGO = "/main-logo.png";
 
 function DesktopItem({ item }: { item: NavItem }) {
   const [open, setOpen] = useState(false);

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ArrowLeft, ShieldCheck } from "lucide-react";
 
-const LOGO = "https://whrdhub.org/wp-content/uploads/2025/05/imageedit_10_2063970092-600x198.png";
+const LOGO = "/main-logo.png";
 const SIDE_IMG = "https://whrdhub.org/wp-content/uploads/2025/03/IMG_0764-scaled.jpg";
 
 /**
@@ -32,7 +32,7 @@ export function AuthShell({
           <img src={LOGO} alt="WHRD Hub" className="h-9 w-auto" />
         </Link>
         <div className="relative max-w-md">
-          <h2 className="text-4xl font-black leading-tight">A home for women human rights defenders</h2>
+          <h2 className="text-4xl font-black leading-tight">A home for women human rights defenders across Kenya &amp; Beyond</h2>
           <p className="mt-4 text-white/85 text-lg leading-relaxed">
             Join a community of defenders across Kenya. Share your work, publish your stories, and
             grow through femtorship.

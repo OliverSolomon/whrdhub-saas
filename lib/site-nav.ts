@@ -31,10 +31,9 @@ export const NAV: NavItem[] = [
   {
     label: "About Us",
     children: [
-      { label: "Our Approach", href: "/about" },
+      { label: "About the Hub", href: "/about" },
       { label: "Our Impact", href: "/about#impact" },
-      { label: "Board Members", href: "/about#board" },
-      { label: "Staff", href: "/about#staff" },
+      { label: "Board & Staff", href: "/about#board" },
       { label: "Our Partners", href: "/about#partners" },
     ],
   },
@@ -51,7 +50,7 @@ export const NAV: NavItem[] = [
   {
     label: "Voices",
     children: [
-      { label: "Stories from the movement", href: "/blog" },
+      { label: "Blog", href: "/blog" },
       { label: "Downloads & Reports", href: "/resources" },
       { label: "Newsletter", href: "/newsletter" },
     ],
