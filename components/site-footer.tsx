@@ -6,7 +6,7 @@ import { CONTACT } from "@/lib/site-content";
 import { FacebookIcon, XIcon, InstagramIcon, LinkedinIcon, YoutubeIcon } from "@/components/social-icons";
 
 const LOGO = "/main-logo.png";
-const NGO_SOURCE_BADGE = "/ngo-source/ngosource-ed-on-file.png";
+const NGO_SOURCE_BADGE = "/ngosource-ed-on-file.png";
 const NGO_SOURCE_HREF =
   "https://www.ngosource.org/about-equivalency-determination-on-file-badge";
 
