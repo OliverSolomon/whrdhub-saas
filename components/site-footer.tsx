@@ -6,6 +6,9 @@ import { CONTACT } from "@/lib/site-content";
 import { FacebookIcon, XIcon, InstagramIcon, LinkedinIcon, YoutubeIcon } from "@/components/social-icons";
 
 const LOGO = "/main-logo.png";
+const NGO_SOURCE_BADGE = "/ngo-source/ngosource-ed-on-file.png";
+const NGO_SOURCE_HREF =
+  "https://www.ngosource.org/about-equivalency-determination-on-file-badge";
 
 const SOCIAL_LINKS = [
   { href: SOCIALS.facebook, label: "Facebook", Icon: FacebookIcon },
@@ -82,6 +85,19 @@ export function SiteFooter() {
         </div>
 
         <div className="mt-10 pt-6 border-t border-line text-center">
+          <a
+            href={NGO_SOURCE_HREF}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-block mb-5"
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={NGO_SOURCE_BADGE}
+              alt="NGOsource Equivalency Determination on File"
+              className="h-14 sm:h-16 w-auto mx-auto"
+            />
+          </a>
           <nav className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 mb-3">
             <Link href="/privacy-policy" className="text-xs text-muted hover:text-purple-700 transition-colors">
               Privacy Policy
