@@ -5,24 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { alertOnReport } from "@/lib/alerts";
-
-const ADJECTIVES = [
-  "brave","strong","bold","fierce","proud","wise","calm","bright",
-  "steady","gentle","swift","clear","free","safe","sure","true",
-  "kind","warm","fair","pure","keen","vast","deep","cool",
-];
-const NOUNS = [
-  "voice","heart","shield","light","hope","star","path","flame",
-  "river","dawn","seed","rose","oak","bird","reef","tide",
-  "peak","leaf","wave","song","wind","field","moon","sun",
-];
-
-function generateUsername(): string {
-  const adj = ADJECTIVES[Math.floor(Math.random() * ADJECTIVES.length)];
-  const noun = NOUNS[Math.floor(Math.random() * NOUNS.length)];
-  const suffix = Math.random().toString(36).slice(2, 6);
-  return `${adj}-${noun}-${suffix}`;
-}
+import { generateUsername } from "@/lib/anonymous-username";
 
 export interface ReportData {
   // WHAT
@@ -107,7 +90,7 @@ export async function submitReport(data: ReportData): Promise<SubmitReportResult
       email: virtualEmail,
       password: data.password!,
       email_confirm: true,
-      user_metadata: { username, is_anonymous: true, user_type: "reporter" },
+      user_metadata: { username, is_anonymous: true, account_kind: "anonymous" },
     });
 
     if (signupError || !signupData.user) {

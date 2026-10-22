@@ -45,9 +45,15 @@ export async function GET(request: Request) {
 
         // Staff skip member onboarding and open the console by default.
         const staff = isStaffProfile(profile);
+        // Someone who chose "just report" lands on their reports and is never pushed through chapter onboarding.
+        const reporterChoice = next.startsWith("/dashboard/reports");
+        if (reporterChoice && !staff && !profile?.hub_onboarded) {
+          // Best effort: Google sign-ups carry no kind of their own, so record the choice.
+          await supabase.from("profiles").update({ account_kind: "reporter" }).eq("id", user.id);
+        }
         const dest = staff
           ? (next === DEFAULT_NEXT ? STAFF_HOME : next)
-          : profile?.hub_onboarded ? next : "/onboarding";
+          : profile?.hub_onboarded || reporterChoice ? next : "/onboarding";
         return NextResponse.redirect(`${origin}${dest}`);
       }
     }
