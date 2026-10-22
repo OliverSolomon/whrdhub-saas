@@ -7,7 +7,7 @@
  * back to the offline page only when the network is unavailable.
  */
 
-const VERSION = "whrd-v2";
+const VERSION = "whrd-v3";
 const STATIC_CACHE = `${VERSION}-static`;
 const OFFLINE_URL = "/offline";
 
@@ -126,4 +126,36 @@ async function notifyClientsToSync() {
 
 self.addEventListener("message", (event) => {
   if (event.data && event.data.type === "SKIP_WAITING") self.skipWaiting();
+});
+
+// Urgent-case alerts. The payload never carries what a reporter wrote: only that
+// a case needs attention, what kind, and where to open it.
+self.addEventListener("push", (event) => {
+  let data = {};
+  try { data = event.data ? event.data.json() : {}; } catch (e) { data = {}; }
+  const title = data.title || "WHRD Hub";
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body: data.body || "",
+      tag: data.tag || "whrd-alert",
+      icon: "/icon-192.png",
+      badge: "/icon-192.png",
+      data: { url: data.url || "/hub/reporting" },
+      requireInteraction: true,
+    })
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const url = (event.notification.data && event.notification.data.url) || "/hub/reporting";
+  event.waitUntil(
+    (async () => {
+      const all = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+      for (const c of all) {
+        if ("focus" in c) { await c.focus(); if ("navigate" in c) { try { await c.navigate(url); } catch (e) { /* cross-origin */ } } return; }
+      }
+      await self.clients.openWindow(url);
+    })()
+  );
 });

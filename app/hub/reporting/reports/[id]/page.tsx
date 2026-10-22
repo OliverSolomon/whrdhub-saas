@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import Link from "next/link";
 import { ArrowLeft, ExternalLink, Shield, CheckCircle, XCircle, HelpCircle, MapPin, Calendar, User, AlertTriangle, Briefcase, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -73,6 +74,11 @@ async function ReportDetail({ id }: { id: string }) {
   const user = session?.user;
   if (user) {
     await supabase.from("report_audit_log").insert({ report_id: id, viewed_by: user.id, action: "viewed" });
+    // A triager opening a critical report is the acknowledgement that stops it being raised again.
+    const alertState = report as { alert_severity?: string | null; acknowledged_at?: string | null };
+    if (alertState.alert_severity === "critical" && !alertState.acknowledged_at && access?.canTriage) {
+      await createAdminClient().from("reports").update({ acknowledged_at: new Date().toISOString(), acknowledged_by: user.id }).eq("id", id);
+    }
   }
 
   const assignedServiceIds = new Set((assignedServices ?? []).map(s => s.service_id));

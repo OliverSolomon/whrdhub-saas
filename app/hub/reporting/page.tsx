@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { createClient } from "@/lib/supabase/server";
+import { PushToggle } from "@/components/pwa/push-toggle";
 import { AdminDashboardClient, type Report } from "@/components/reporting/admin/dashboard-client";
 
 async function AdminDashboardData() {
@@ -17,6 +18,8 @@ export const metadata = { title: "Reporting dashboard — WHRD Hub" };
 
 export default function ReportingOverviewPage() {
   return (
+    <div className="space-y-5">
+    <PushToggle publicKey={process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY} />
     <Suspense fallback={
       <div className="space-y-4">
         <div className="h-8 w-48 bg-paper rounded animate-pulse" />
@@ -28,5 +31,6 @@ export default function ReportingOverviewPage() {
     }>
       <AdminDashboardData />
     </Suspense>
+    </div>
   );
 }

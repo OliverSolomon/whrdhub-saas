@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
+import { alertOnReport } from "@/lib/alerts";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { INCIDENT_TYPES, KENYA_COUNTIES, OTHER_COUNTRIES, countryOf } from "@/lib/reporting-options";
 
@@ -195,6 +196,9 @@ export async function POST(req: NextRequest) {
       }, { onConflict: "session_id" });
       // Only the confirmation SMS depends on this row; the report is already saved.
       if (sessionError) console.error("USSD session log error:", sessionError);
+
+      // Critical kinds of abuse (a disappearance, a femicide) alert the team even from a feature phone.
+      after(() => alertOnReport(report.id as string));
 
       // The confirmation SMS is sent by the events callback (/api/ussd/events)
       // when AT notifies us the session has ended - keeps SMS off this path.

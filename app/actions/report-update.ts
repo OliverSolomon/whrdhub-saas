@@ -1,6 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
+import { alertOnReport } from "@/lib/alerts";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { RISKS, SUPPORT_TYPES, countryOf } from "@/lib/reporting-options";
@@ -61,6 +63,8 @@ export async function updateReportRisks(
   if (error) return { error: "Could not save that just now. Please try again." };
 
   await audit(reportId, own.userId, "Updated risks and support");
+  // Newly listed risks can make a report critical; alertOnReport does nothing if it already was.
+  after(() => alertOnReport(reportId));
   revalidatePath(`/dashboard/reports/${reportId}`);
   revalidatePath("/dashboard/reports");
   revalidatePath("/hub/reporting");

@@ -3,6 +3,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
+import { alertOnReport } from "@/lib/alerts";
 
 const ADJECTIVES = [
   "brave","strong","bold","fierce","proud","wise","calm","bright",
@@ -197,6 +199,9 @@ export async function submitReport(data: ReportData): Promise<SubmitReportResult
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/reports");
   revalidatePath("/hub/reporting");
+
+  // Alert the response team once the response has been sent, so the reporter never waits on it.
+  if (reportRow?.id) after(() => alertOnReport(reportRow.id as string));
 
   return {
     success: true,
