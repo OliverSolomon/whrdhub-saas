@@ -1,9 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ExternalLink, Inbox as InboxIcon, Loader2, UserRoundX } from "lucide-react";
-import { setResultStatus, muteAccount } from "@/app/actions/listening";
+import { useRouter } from "next/navigation";
+import { ArrowRight, ExternalLink, Inbox as InboxIcon, Loader2, UserRoundX } from "lucide-react";
+import { setResultStatus, muteAccount, takeOnCapture } from "@/app/actions/listening";
 import { Modal } from "@/components/ui/modal";
+import Link from "next/link";
 import { cn, timeAgo } from "@/lib/utils";
 import { AI_LABEL, PLATFORM_LABEL, SEVERITY_DOT, isLikelyReal, type Result, type Run } from "./types";
 
@@ -27,6 +29,7 @@ export function Inbox({ results, run, busy }: { results: Result[]; run: Run; bus
   const [platform, setPlatform] = useState<string>("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [sheet, setSheet] = useState(false);
+  const router = useRouter();
 
   const counts = useMemo(
     () => Object.fromEntries(STATUSES.map((s) => [s.id, results.filter((r) => r.status === s.id).length])) as Record<Status, number>,
@@ -62,8 +65,14 @@ export function Inbox({ results, run, busy }: { results: Result[]; run: Run; bus
     setSheet(false);
   };
 
+  /** Taking on opens a case: a normal report with the post and every tool, and we go straight to it. */
+  const takeOn = async (r: Result) => {
+    const res = await run(`s-${r.id}`, () => takeOnCapture(r.id));
+    if (res?.reportId) router.push(`/hub/reporting/reports/${res.reportId}`);
+  };
+
   const detail = selected ? (
-    <Detail r={selected} busy={busy} onMove={(to) => move(selected, to)} onMute={() => run(`mute-${selected.id}`, () => muteAccount(selected.source, selected.author ?? ""))} />
+    <Detail r={selected} busy={busy} onTakeOn={() => takeOn(selected)} onMove={(to) => move(selected, to)} onMute={() => run(`mute-${selected.id}`, () => muteAccount(selected.source, selected.author ?? ""))} />
   ) : null;
 
   return (
@@ -157,7 +166,7 @@ export function Inbox({ results, run, busy }: { results: Result[]; run: Run; bus
   );
 }
 
-function Detail({ r, busy, onMove, onMute }: { r: Result; busy: string | null; onMove: (to: string) => void; onMute: () => void }) {
+function Detail({ r, busy, onMove, onTakeOn, onMute }: { r: Result; busy: string | null; onMove: (to: string) => void; onTakeOn: () => void; onMute: () => void }) {
   const ai = r.ai_class ? AI_LABEL[r.ai_class] : null;
   const working = busy === `s-${r.id}`;
   const canMute = !!r.author && (r.source === "instagram" || r.source === "x");
@@ -220,8 +229,18 @@ function Detail({ r, busy, onMove, onMute }: { r: Result; busy: string | null; o
           </p>
         )}
         <div className="flex flex-wrap gap-2">
-          {r.status === "new" && [btn("reviewing", "Take on", true), btn("actioned", "Mark actioned"), btn("dismissed", "Dismiss")]}
-          {r.status === "reviewing" && [btn("actioned", "Mark actioned", true), btn("dismissed", "Dismiss"), btn("new", "Put back")]}
+          {r.report_id && (
+            <Link href={`/hub/reporting/reports/${r.report_id}`} className="inline-flex h-10 items-center justify-center gap-1.5 rounded-xl bg-purple px-4 text-sm font-semibold text-white hover:bg-purple-600">
+              Open case <ArrowRight className="h-4 w-4" />
+            </Link>
+          )}
+          {r.status === "new" && [
+            <button key="take" onClick={onTakeOn} disabled={busy !== null} className="inline-flex h-10 items-center justify-center gap-1.5 rounded-xl bg-purple px-4 text-sm font-semibold text-white hover:bg-purple-600 disabled:opacity-50">
+              {working ? <Loader2 className="h-4 w-4 animate-spin" /> : <>Take on <ArrowRight className="h-4 w-4" /></>}
+            </button>,
+            btn("actioned", "Mark actioned"), btn("dismissed", "Dismiss"),
+          ]}
+          {r.status === "reviewing" && [btn("actioned", "Mark actioned", !r.report_id), btn("dismissed", "Dismiss"), !r.report_id && btn("new", "Put back")]}
           {(r.status === "actioned" || r.status === "dismissed") && btn("new", "Reopen")}
         </div>
         {canMute && (

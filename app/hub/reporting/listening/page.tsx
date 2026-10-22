@@ -14,7 +14,7 @@ export default async function ListeningPage() {
 
   // Columns added by later migrations are tried first and dropped if the database does not have them yet.
   const base = "id, source, permalink, author, content, matched_keywords, severity, status, captured_at";
-  const attempts = [`${base}, ai_class, ai_confidence, handled_by, handled_at`, `${base}, ai_class, ai_confidence`, base];
+  const attempts = [`${base}, ai_class, ai_confidence, handled_by, handled_at, report_id`, `${base}, ai_class, ai_confidence, handled_by, handled_at`, `${base}, ai_class, ai_confidence`, base];
   let rows: Record<string, unknown>[] = [];
   for (const cols of attempts) {
     const { data, error } = await db.from("listening_results").select(cols).order("captured_at", { ascending: false }).limit(300);

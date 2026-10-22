@@ -7,6 +7,7 @@ import { ingestItems } from "@/lib/listening";
 import { readSocialLink, socialEnabled, validHandle } from "@/lib/social-fetch";
 import { scanAll } from "@/lib/listening-sources";
 import { setPackEnabled } from "@/lib/listening-packs";
+import { createCaseFromCapture } from "@/lib/listening-case";
 import { POLITICAL_HARASSMENT_KEYWORDS } from "@/lib/political-harassment";
 import type { RawItem } from "@/lib/meta";
 
@@ -192,4 +193,20 @@ export async function togglePack(id: string, enabled: boolean) {
   await setPackEnabled(id, enabled);
   revalidatePath("/hub/reporting/listening");
   return { ok: true };
+}
+
+/**
+ * Take on a capture: it becomes a normal case (the same page, fact-check, services
+ * and timeline as a report a person filed), assigned to the admin who took it on.
+ * Taking on one that is already a case just returns that case.
+ */
+export async function takeOnCapture(id: string) {
+  const adminId = await requireAdmin();
+  if (!adminId) return { error: "Admins only." };
+  const r = await createCaseFromCapture(id, adminId);
+  if ("error" in r) return { error: r.error };
+  revalidatePath("/hub/reporting/listening");
+  revalidatePath("/hub/reporting/reports");
+  revalidatePath("/hub/reporting");
+  return { ok: true, reportId: r.reportId };
 }

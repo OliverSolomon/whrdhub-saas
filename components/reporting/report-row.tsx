@@ -24,7 +24,7 @@ const VERIF: Record<string, { tone: "cyan" | "green" | "red" | "amber"; label: s
   unverified: { tone: "red", label: "Could not verify" },
   needs_more_info: { tone: "amber", label: "Needs more info" },
 };
-const CHANNEL: Record<string, string> = { web: "Web", ussd: "USSD", mobile: "Mobile", api: "API" };
+const CHANNEL: Record<string, string> = { web: "Web", ussd: "USSD", mobile: "Mobile", api: "Online listening" };
 
 /**
  * A report on a single line: what it is, where, how long ago, and the few

@@ -143,7 +143,7 @@ export function AdminDashboardClient({ reports }: { reports: Report[] }) {
           { key: "county", label: "County", options: uniqueCounties.map((c) => ({ value: c, label: c })) },
           { key: "urgency", label: "Urgency", options: [{ value: "immediate", label: "Immediate" }, { value: "within_week", label: "Within a week" }, { value: "no_rush", label: "No rush" }] },
           { key: "verif", label: "Fact-check", options: [{ value: "pending", label: "Pending" }, { value: "verified", label: "Verified" }, { value: "unverified", label: "Could not verify" }, { value: "needs_more_info", label: "Needs more info" }] },
-          { key: "channel", label: "Channel", options: [{ value: "web", label: "Web" }, { value: "ussd", label: "USSD" }, { value: "mobile", label: "Mobile" }, { value: "api", label: "API" }] },
+          { key: "channel", label: "Channel", options: [{ value: "web", label: "Web" }, { value: "ussd", label: "USSD" }, { value: "mobile", label: "Mobile" }, { value: "api", label: "Online listening" }] },
         ]}
         values={{ county: countyFilter, urgency: urgencyFilter, verif: verifFilter, channel: channelFilter }}
         onChange={(key, value) => ({ county: setCountyFilter, urgency: setUrgencyFilter, verif: setVerifFilter, channel: setChannelFilter } as Record<string, (v: string) => void>)[key]?.(value)}

@@ -15,10 +15,12 @@ export interface Result {
   /** The admin who last took this on or closed it, so colleagues do not duplicate the work. */
   handled_by_name?: string | null;
   handled_at?: string | null;
+  /** The case this capture became when it was taken on. */
+  report_id?: string | null;
 }
 
 export type ActionResult =
-  | { error?: string; ok?: boolean; stored?: number; existing?: number; scanned?: number; added?: number; problems?: string[] }
+  | { error?: string; ok?: boolean; stored?: number; existing?: number; scanned?: number; added?: number; problems?: string[]; reportId?: string }
   | undefined;
 
 /** Runs a server action with a busy flag, a toast for the outcome, and a refresh of the page data. */

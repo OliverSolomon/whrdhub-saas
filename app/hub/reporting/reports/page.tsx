@@ -130,7 +130,7 @@ const FILTERS = (counties: string[]): FilterDef[] => [
     { value: "declined", label: "Declined" },
     { value: "completed", label: "Completed" },
   ] },
-  { key: "channel", label: "Channel", options: [{ value: "web", label: "Web" }, { value: "ussd", label: "USSD" }, { value: "mobile", label: "Mobile" }, { value: "api", label: "API" }] },
+  { key: "channel", label: "Channel", options: [{ value: "web", label: "Web" }, { value: "ussd", label: "USSD" }, { value: "mobile", label: "Mobile" }, { value: "api", label: "Online listening" }] },
   { key: "reporter", label: "Reporter", options: [{ value: "anonymous", label: "Anonymous" }, { value: "authenticated", label: "With an account" }] },
 ];
 

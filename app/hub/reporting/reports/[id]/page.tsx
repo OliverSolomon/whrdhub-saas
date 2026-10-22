@@ -28,7 +28,7 @@ const VERIFICATION_META: Record<string, { label: string; icon: React.ReactNode; 
   needs_more_info: { label: "Needs more info", icon: <AlertTriangle className="w-4 h-4" />, variant: "warning" },
 };
 
-const CHANNEL_LABEL: Record<string, string> = { web: "Web form", ussd: "USSD (feature phone)", api: "API", mobile: "Mobile app" };
+const CHANNEL_LABEL: Record<string, string> = { web: "Web form", ussd: "USSD (feature phone)", api: "Online listening", mobile: "Mobile app" };
 const REPORTING_FOR_LABEL: Record<string, string> = {
   self: "Reporting for themselves",
   someone_else: "Reporting for someone else",
@@ -109,6 +109,20 @@ async function ReportDetail({ id }: { id: string }) {
     const { data: people } = await supabase.from("profiles").select("id, username, full_name").in("id", staffIds);
     for (const p of people ?? []) staffNames.set(p.id as string, (p.full_name as string) || (p.username as string) || "a team member");
   }
+
+  // A case opened from online listening links back to the post it came from.
+  type Capture = { author: string | null; source: string; permalink: string | null; captured_at: string; ai_class: string | null; ai_confidence: number | null; matched_keywords: string[] | null };
+  let capture = null as Capture | null;
+  const captureId = (report as { source_capture_id?: string | null }).source_capture_id;
+  if (captureId) {
+    const { data } = await createAdminClient()
+      .from("listening_results")
+      .select("author, source, permalink, captured_at, ai_class, ai_confidence, matched_keywords")
+      .eq("id", captureId)
+      .maybeSingle();
+    capture = data as Capture | null;
+  }
+  const fromListening = !!capture || report.channel === "api";
 
   const voicePaths = ((report as { voice_note_paths?: string[] | null }).voice_note_paths ?? []).slice(0, 3);
   const voiceUrls: string[] = [];
@@ -192,8 +206,8 @@ async function ReportDetail({ id }: { id: string }) {
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
-      <Link href="/hub/reporting/reports" className="inline-flex items-center gap-2 text-sm font-semibold text-muted transition-colors hover:text-purple">
-        <ArrowLeft className="w-4 h-4" /> Back to reports
+      <Link href={fromListening ? "/hub/reporting/listening" : "/hub/reporting/reports"} className="inline-flex items-center gap-2 text-sm font-semibold text-muted transition-colors hover:text-purple">
+        <ArrowLeft className="w-4 h-4" /> {fromListening ? "Back to online listening" : "Back to reports"}
       </Link>
 
       {/* Header */}
@@ -262,9 +276,28 @@ async function ReportDetail({ id }: { id: string }) {
       <div className="grid gap-6 lg:grid-cols-3">
         {/* ── Main column: everything the reporter told us ── */}
         <div className="space-y-5 lg:col-span-2">
+          {fromListening && (
+            <section className="card-premium flex flex-wrap items-center justify-between gap-3 !border-purple/30 !bg-purple-050/50 p-4 sm:px-6">
+              <div className="min-w-0">
+                <p className="eyebrow mb-1 flex items-center gap-1.5"><Radio className="h-3 w-3" />Found by online listening</p>
+                <p className="text-sm text-ink">
+                  {capture
+                    ? <>Posted by <span className="font-semibold">{capture.author ?? "an unknown account"}</span> on {capture.source === "x" ? "X" : capture.source.replace(/^\w/, (c) => c.toUpperCase())}, captured {timeAgo(capture.captured_at)}.</>
+                    : "Nobody reported this: it was found online and taken on by the team."}
+                  {" "}Nobody has contacted us about it.
+                </p>
+              </div>
+              {capture?.permalink && (
+                <a href={capture.permalink} target="_blank" rel="noopener noreferrer" className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-xl border border-line bg-surface px-3.5 text-xs font-bold text-purple hover:bg-paper">
+                  Open the original post <ExternalLink className="h-3.5 w-3.5" />
+                </a>
+              )}
+            </section>
+          )}
+
           <Card title="What happened" icon={Shield}>
             <div>
-              <p className="eyebrow mb-1.5">In their words</p>
+              <p className="eyebrow mb-1.5">{fromListening ? "The post" : "In their words"}</p>
               <p className="whitespace-pre-line rounded-2xl bg-paper p-4 text-[15px] leading-relaxed text-ink">
                 {(report.description as string) || (report.what_description as string) || "No description was given."}
               </p>
@@ -425,6 +458,21 @@ async function ReportDetail({ id }: { id: string }) {
 
         {/* ── Sidebar ── */}
         <aside className="space-y-5 lg:sticky lg:top-4 lg:self-start">
+          {fromListening ? (
+            <section className="card-premium space-y-3 p-5">
+              <h3 className="flex items-center gap-2 font-display text-base font-bold text-ink"><Radio className="h-4 w-4 text-purple" />Found online</h3>
+              <p className="rounded-xl bg-paper p-3.5 text-sm text-muted">
+                There is no reporter to call or message: this was not reported to us. Use the original post and account to decide how, or whether, to reach out, and be careful not to put anyone at risk.
+              </p>
+              <dl className="space-y-3">
+                <Fact label="Account">{capture?.author ?? undefined}</Fact>
+                <Fact label="Captured">{capture?.captured_at ? stamp(capture.captured_at) : undefined}</Fact>
+                <Fact label="Matched">{capture?.matched_keywords?.length ? <Chips items={capture.matched_keywords} tone="purple" /> : undefined}</Fact>
+                <Fact label="Assigned to">{report.assigned_to ? staffNames.get(report.assigned_to as string) ?? "A team member" : undefined}</Fact>
+              </dl>
+            </section>
+          ) : (
+            <>
           {/* Reaching the reporter */}
           <section className="card-premium space-y-3 p-5">
             <h3 className="flex items-center gap-2 font-display text-base font-bold text-ink"><Phone className="h-4 w-4 text-purple" />Reaching the reporter</h3>
@@ -473,6 +521,9 @@ async function ReportDetail({ id }: { id: string }) {
               <Fact label="Assigned to">{report.assigned_to ? staffNames.get(report.assigned_to as string) ?? "A team member" : undefined}</Fact>
             </dl>
           </section>
+
+            </>
+          )}
 
           {/* Assigned services */}
           <section className="card-premium space-y-4 p-5">
