@@ -252,7 +252,7 @@ export function DashboardShell({
           <button onClick={() => setMobileOpen(true)} className="-ml-1 shrink-0 rounded-lg p-2 hover:bg-paper lg:hidden" aria-label="Menu">
             <Menu className="h-5 w-5 text-ink" />
           </button>
-          <p className="truncate font-display text-lg font-semibold tracking-tight text-ink">{activeTitle}</p>
+          <p className="truncate text-[17px] font-semibold tracking-tight text-ink">{activeTitle}</p>
           <div className="flex-1" />
           <Link href={role === "admin" ? "/hub/notifications" : "/dashboard/notifications"} className="relative shrink-0 rounded-lg p-2 hover:bg-paper" aria-label="Notifications">
             <Bell className="h-5 w-5 text-ink/80" />

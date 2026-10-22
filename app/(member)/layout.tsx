@@ -56,7 +56,7 @@ export default async function MemberLayout({ children }: { children: React.React
     ? [
         { label: "My Reports", href: "/dashboard/reports", icon: "reports", badge: actioned || undefined, primary: true },
         { label: "Community", href: "/dashboard/feed", icon: "feed", primary: true },
-        { label: "Account", href: "/dashboard/account", icon: "account", primary: true },
+        { label: "Profile & account", shortLabel: "Account", href: "/profile", icon: "account", primary: true },
       ]
     : [
         // The four marked primary are what the mobile bar carries, in this order.
@@ -73,8 +73,7 @@ export default async function MemberLayout({ children }: { children: React.React
               section: "Your network",
             }] as NavItem[])
           : []),
-        { label: "Profile", href: "/profile", icon: "profile", section: "You" },
-        { label: "Account", href: "/dashboard/account", icon: "account", section: "You" },
+        { label: "Profile & account", shortLabel: "Profile", href: "/profile", icon: "profile", section: "You" },
       ];
 
   // Hub admins and reporting defenders get the console switch in the user menu.
