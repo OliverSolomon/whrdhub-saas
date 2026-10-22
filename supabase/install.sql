@@ -3113,7 +3113,7 @@ exception when duplicate_object then null; when others then null; end $$;
 -- The cron job looks for critical, unacknowledged reports.
 create index if not exists reports_unacked_critical_idx
   on public.reports (created_at)
-  where alert_severity = 'critical' and acknowledged_at is null and deleted_at is null;
+  where alert_severity = 'critical' and acknowledged_at is null;
 
 -- ── AI triage of online listening ─────────────────────────────────────────
 alter table public.listening_results
