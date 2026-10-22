@@ -5,6 +5,11 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { requireReportingAdmin } from "@/lib/reporting-access";
 import { fetchRecentContent, metaConfigured, metaDiagnose, type MetaDiagnosis } from "@/lib/meta";
 import { ingestItems } from "@/lib/listening";
+import { readSocialLink, socialEnabled } from "@/lib/social-fetch";
+import { POLITICAL_HARASSMENT_KEYWORDS } from "@/lib/political-harassment";
+import type { RawItem } from "@/lib/meta";
+
+const MAX_LINKS_PER_SCAN = 10;
 
 async function requireAdmin() {
   return await requireReportingAdmin();
@@ -73,4 +78,49 @@ export async function setResultStatus(id: string, status: string) {
   if (error) return { error: error.message };
   revalidatePath("/hub/reporting/listening");
   return { ok: true };
+}
+
+/**
+ * Read the Instagram and X links an admin pastes, and run the posts through the
+ * same keyword matching as everything else. Only the public text of the post is
+ * kept; nothing about its comments, followers or the author's profile.
+ */
+export async function scanSocialLinks(input: string) {
+  if (!(await requireAdmin())) return { error: "Admins only." };
+  if (!socialEnabled()) return { error: "Social lookups are switched off (SOCIAL_PROVIDER=off)." };
+  const links = [...new Set(input.split(/[\s,]+/).map((l) => l.trim()).filter((l) => /^https?:\/\//i.test(l)))];
+  if (!links.length) return { error: "Paste one or more Instagram or X post links." };
+  if (links.length > MAX_LINKS_PER_SCAN) return { error: `Scan at most ${MAX_LINKS_PER_SCAN} links at a time.` };
+
+  const items: RawItem[] = [];
+  const problems: string[] = [];
+  for (const link of links) {
+    const r = await readSocialLink(link);
+    if (r.post && r.post.text) {
+      items.push({ source: r.post.source, source_id: r.post.sourceId, permalink: r.post.url, author: r.post.author, content: r.post.text });
+    } else {
+      problems.push(`${link.replace(/^https?:\/\/(www\.)?/, "").slice(0, 48)}: ${r.post ? "the post has no text" : r.message}`);
+    }
+  }
+  try {
+    const { stored } = await ingestItems(items);
+    revalidatePath("/hub/reporting/listening");
+    return { ok: true, scanned: items.length, stored, problems };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Scan failed." };
+  }
+}
+
+/** Add the political-harassment vocabulary to the watch list (existing words are left alone). */
+export async function seedPoliticalKeywords() {
+  if (!(await requireAdmin())) return { error: "Admins only." };
+  const { data: existing } = await db().from("listening_keywords").select("word");
+  const have = new Set((existing ?? []).map((k: { word: string }) => k.word.toLowerCase()));
+  const fresh = POLITICAL_HARASSMENT_KEYWORDS.filter((k) => !have.has(k.word.toLowerCase()));
+  if (fresh.length) {
+    const { error } = await db().from("listening_keywords").insert(fresh);
+    if (error) return { error: error.message };
+  }
+  revalidatePath("/hub/reporting/listening");
+  return { ok: true, added: fresh.length };
 }

@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { metaConfigured } from "@/lib/meta";
+import { instagramConfigured } from "@/lib/social-fetch";
 import { ListeningView, type Keyword, type Result } from "@/components/reporting/listening/listening-view";
 
 export const metadata = { title: "Online Listening - WHRD Hub" };
@@ -17,6 +18,7 @@ export default async function ListeningPage() {
   return (
     <ListeningView
       connected={metaConfigured()}
+      socialReady={instagramConfigured()}
       keywords={(keywords ?? []) as Keyword[]}
       results={(results ?? []) as Result[]}
     />

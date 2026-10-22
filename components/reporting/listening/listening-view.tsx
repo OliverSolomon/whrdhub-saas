@@ -3,9 +3,9 @@
 import { useState } from "react";
 import {
   RadioTower, RefreshCw, Loader2, Plus, X, Circle, Plug, ExternalLink,
-  Check, EyeOff, Search, Stethoscope, AlertTriangle,
+  Check, EyeOff, Search, Stethoscope, AlertTriangle, Link2, ShieldAlert,
 } from "lucide-react";
-import { pollMeta, addKeyword, removeKeyword, toggleKeyword, setResultStatus, diagnoseMeta } from "@/app/actions/listening";
+import { pollMeta, scanSocialLinks, seedPoliticalKeywords, addKeyword, removeKeyword, toggleKeyword, setResultStatus, diagnoseMeta } from "@/app/actions/listening";
 import type { MetaDiagnosis } from "@/lib/meta";
 import { useRouter } from "next/navigation";
 
@@ -22,7 +22,7 @@ const SEV: Record<string, string> = {
 };
 const STATUS_TABS = ["new", "reviewing", "actioned", "dismissed"] as const;
 
-export function ListeningView({ connected, keywords, results }: { connected: boolean; keywords: Keyword[]; results: Result[] }) {
+export function ListeningView({ connected, socialReady, keywords, results }: { connected: boolean; socialReady: boolean; keywords: Keyword[]; results: Result[] }) {
   const router = useRouter();
   const [tab, setTab] = useState<(typeof STATUS_TABS)[number]>("new");
   const [busy, setBusy] = useState<string | null>(null);
@@ -30,6 +30,8 @@ export function ListeningView({ connected, keywords, results }: { connected: boo
   const [newWord, setNewWord] = useState("");
   const [newSev, setNewSev] = useState("high");
   const [diag, setDiag] = useState<MetaDiagnosis | null>(null);
+  const [links, setLinks] = useState("");
+  const [problems, setProblems] = useState<string[]>([]);
 
   // Deliberately separate from `run`: a diagnosis is not a mutation, it should
   // not refresh the page, and its result is a panel rather than a one-line message.
@@ -41,12 +43,14 @@ export function ListeningView({ connected, keywords, results }: { connected: boo
     setDiag(res.diagnosis);
   };
 
-  const run = async (tag: string, fn: () => Promise<{ error?: string; ok?: boolean; stored?: number; scanned?: number } | undefined>) => {
-    setBusy(tag); setMsg(null);
+  const run = async (tag: string, fn: () => Promise<{ error?: string; ok?: boolean; stored?: number; scanned?: number; added?: number; problems?: string[] } | undefined>) => {
+    setBusy(tag); setMsg(null); setProblems([]);
     const res = await fn();
     setBusy(null);
     if (res?.error) { setMsg(res.error); return; }
-    if (typeof res?.stored === "number") setMsg(`Scanned ${res.scanned}, captured ${res.stored} new signal(s).`);
+    if (typeof res?.added === "number") setMsg(res.added ? `Added ${res.added} keyword(s).` : "Those keywords are already on your list.");
+    if (typeof res?.stored === "number") setMsg(`Read ${res.scanned} post(s), captured ${res.stored} that matched your keywords.`);
+    if (res?.problems?.length) setProblems(res.problems);
     router.refresh();
   };
 
@@ -59,7 +63,7 @@ export function ListeningView({ connected, keywords, results }: { connected: boo
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-black text-ink flex items-center gap-2"><RadioTower className="w-6 h-6 text-purple" /> Online Listening</h1>
-          <p className="text-sm text-muted mt-1">Watches your connected Meta assets for abuse keywords and flags them for review.</p>
+          <p className="text-sm text-muted mt-1">Watches Facebook, Instagram and X for abuse and political-harassment keywords, and flags what it finds for review.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
         <button onClick={testConnection} disabled={busy !== null}
@@ -125,10 +129,38 @@ export function ListeningView({ connected, keywords, results }: { connected: boo
       )}
       {msg && !diag && <p className="text-sm font-semibold text-purple">{msg}</p>}
 
+      {/* Social links */}
+      <section className="rounded-2xl border border-line bg-surface p-5 shadow-[0_1px_2px_rgba(28,21,34,0.04)]">
+        <h2 className="font-bold text-ink flex items-center gap-2"><Link2 className="w-4 h-4 text-purple" /> Scan Instagram and X links</h2>
+        <p className="text-xs text-muted mt-1">
+          Paste links to public posts, one per line. Their text is read and matched against your keywords; nothing but the post itself is kept.
+          {!socialReady && " Instagram is not connected yet: add APIFY_TOKEN. X links work without a key."}
+        </p>
+        <textarea value={links} onChange={(e) => setLinks(e.target.value)} rows={3}
+          placeholder={"https://www.instagram.com/p/…\nhttps://x.com/someone/status/…"}
+          className="mt-3 w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple/30 resize-y" />
+        <div className="mt-3 flex items-center gap-3">
+          <button onClick={() => run("scan", async () => { const r = await scanSocialLinks(links); if (r && "ok" in r && r.ok) setLinks(""); return r; })}
+            disabled={busy !== null || !links.trim()}
+            className="inline-flex items-center gap-2 rounded-lg bg-purple text-white px-4 h-10 text-sm font-bold hover:bg-purple/90 disabled:opacity-50">
+            {busy === "scan" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />} Scan links
+          </button>
+        </div>
+        {problems.length > 0 && (
+          <ul className="mt-3 space-y-1 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-3">
+            {problems.map((p) => <li key={p}>{p}</li>)}
+          </ul>
+        )}
+      </section>
+
       {/* Keyword manager */}
       <section className="rounded-xl border border-line bg-surface p-5">
         <h2 className="font-bold text-ink flex items-center gap-2"><Search className="w-4 h-4 text-purple" /> Watch keywords</h2>
         <p className="text-xs text-muted mt-1">Comments and posts containing these words are captured. High-severity words are surfaced first.</p>
+        <button onClick={() => run("seed", seedPoliticalKeywords)} disabled={busy !== null}
+          className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-line px-3 h-9 text-xs font-semibold text-ink hover:bg-paper disabled:opacity-50">
+          {busy === "seed" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ShieldAlert className="w-3.5 h-3.5 text-magenta" />} Add political-harassment keywords
+        </button>
         <div className="mt-4 flex flex-wrap gap-2">
           {keywords.map((k) => (
             <span key={k.id} className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold ${k.active ? SEV[k.severity] ?? SEV.low : "bg-paper text-muted border-line line-through opacity-60"}`}>
@@ -171,7 +203,7 @@ export function ListeningView({ connected, keywords, results }: { connected: boo
         {shown.length === 0 ? (
           <div className="rounded-xl border border-dashed border-line p-10 text-center text-sm text-muted">
             <RadioTower className="w-8 h-8 mx-auto text-purple/60" />
-            <p className="mt-3">No {tab} signals. {connected ? "Try Sync now to scan recent posts." : "Connect Meta to start capturing."}</p>
+            <p className="mt-3">No {tab} signals. {connected || socialReady ? "Scan a link or Sync now to look for signals." : "Connect Meta or paste an X link to start capturing."}</p>
           </div>
         ) : (
           <div className="grid sm:grid-cols-2 gap-3">
@@ -192,7 +224,7 @@ export function ListeningView({ connected, keywords, results }: { connected: boo
                     {r.status !== "dismissed" && <StatusBtn label="Dismiss" onClick={() => run(`s-${r.id}`, () => setResultStatus(r.id, "dismissed"))} busy={busy === `s-${r.id}`} />}
                   </div>
                   {r.author && <span className="text-xs text-muted truncate max-w-[8rem]">{r.author}</span>}
-                  {r.permalink && <a href={r.permalink} target="_blank" rel="noopener noreferrer" className="text-purple shrink-0" title="Open on Meta"><ExternalLink className="w-4 h-4" /></a>}
+                  {r.permalink && <a href={r.permalink} target="_blank" rel="noopener noreferrer" className="text-purple shrink-0" title="Open original post"><ExternalLink className="w-4 h-4" /></a>}
                 </div>
               </article>
             ))}
