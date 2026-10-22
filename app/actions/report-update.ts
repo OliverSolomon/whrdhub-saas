@@ -120,3 +120,18 @@ export async function updateReportDetails(reportId: string, input: ReportDetails
   revalidatePath("/hub/reporting");
   return { ok: true };
 }
+
+/** Attach voice notes recorded by the reporter, after the report exists. Only their own folder is accepted. */
+export async function attachVoiceNote(reportId: string, paths: string[]): Promise<Result> {
+  const own = await ownReport(reportId);
+  if (!("userId" in own)) return { error: own.error };
+  const mine = paths.filter((p) => typeof p === "string" && p.startsWith(`${own.userId}/voice_`)).slice(0, 3);
+  if (mine.length === 0) return { error: "No voice note to attach." };
+
+  const { error } = await createAdminClient().from("reports").update({ voice_note_paths: mine }).eq("id", reportId);
+  if (error) return { error: "Could not attach the voice note just now." };
+  await audit(reportId, own.userId, "Attached a voice note");
+  revalidatePath(`/dashboard/reports/${reportId}`);
+  revalidatePath("/hub/reporting");
+  return { ok: true };
+}

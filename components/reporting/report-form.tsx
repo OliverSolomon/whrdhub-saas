@@ -19,6 +19,10 @@ import { useLanguage, useT } from "@/lib/i18n/context";
 import { translations } from "@/lib/i18n/translations";
 import { INCIDENT_TYPES, ONLINE_INCIDENT_TYPES, SUPPORT_TYPES, KENYA_COUNTIES, OTHER_COUNTRIES, countryOf } from "@/lib/reporting-options";
 import { URGENCY_META } from "@/lib/urgency";
+import { VoiceInput } from "@/components/reporting/voice-input";
+import { useOnline } from "@/lib/use-online";
+import { uploadReportVoiceNote } from "@/lib/supabase/storage";
+import { attachVoiceNote } from "@/app/actions/report-update";
 
 // ─── dual-language label helper ──────────────────────────────────────────────
 // When isDualLang is true (EN or SW), show primary label + secondary in parentheses.
@@ -183,6 +187,8 @@ export default function ReportForm({ isAuthenticated = false, userEmail }: Repor
   // Context
   const [reportingFor, setReportingFor] = useState<"self"|"someone_else"|"child"|"community">("self");
   const [incidentTypes, setIncidentTypes] = useState<string[]>([]);
+  const [voiceBlob, setVoiceBlob] = useState<Blob | null>(null);
+  const online = useOnline();
 
   // What happened
   const [description, setDescription]   = useState("");
@@ -289,7 +295,16 @@ export default function ReportForm({ isAuthenticated = false, userEmail }: Repor
       // "Other" only counts when the person said what they need.
       const allSupport = supportNeeded.filter(s => s !== "other" || supportOther.trim());
 
+      // A signed-in reporter can attach a voice note straight away. Anonymous reporters
+      // have no account until the report is filed, so theirs is attached just after.
+      let voicePaths: string[] = [];
+      if (!isOffline && voiceBlob && isAuthenticated) {
+        const path = await uploadReportVoiceNote(voiceBlob);
+        if (path) voicePaths = [path]; else toast.error("Your voice note could not be saved. The report will be sent without it.");
+      }
+
       payload = {
+        voice_note_paths: voicePaths.length ? voicePaths : undefined,
         incident_types: incidentTypes,
         description,
         reporting_for: reportingFor === "child" || reportingFor === "community"
@@ -340,6 +355,11 @@ export default function ReportForm({ isAuthenticated = false, userEmail }: Repor
             email: result.virtualEmail!,
             password,
           });
+          // Now there is a session, the voice note can be saved against the new report.
+          if (voiceBlob && result.reportId) {
+            const path = await uploadReportVoiceNote(voiceBlob);
+            if (path) await attachVoiceNote(result.reportId, [path]).catch(() => undefined);
+          }
           const params = new URLSearchParams({ u: result.username!, rid: result.reportId || "" });
           router.push(`/report/success?${params}`);
         }
@@ -476,6 +496,13 @@ export default function ReportForm({ isAuthenticated = false, userEmail }: Repor
             className={`rounded-xl resize-none ${fieldErrors.description ? "border-rose-600 focus-visible:ring-rose-600/30" : ""}`}
           />
         </Field>
+
+        <VoiceInput
+          defaultLang={language === "sw" ? "sw-KE" : "en-KE"}
+          onText={(t) => setDescription((d) => (d.trim() ? `${d.trimEnd()} ${t}` : t))}
+          onRecording={setVoiceBlob}
+          canAttach={online}
+        />
 
         <div className="grid sm:grid-cols-2 gap-4">
           <div className="space-y-4">

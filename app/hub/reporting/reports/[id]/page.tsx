@@ -66,6 +66,13 @@ async function ReportDetail({ id }: { id: string }) {
     .order("created_at", { ascending: false })
     .limit(10);
 
+  const voicePaths = ((report as { voice_note_paths?: string[] | null }).voice_note_paths ?? []).slice(0, 3);
+  const voiceUrls: string[] = [];
+  if (voicePaths.length) {
+    const { data: signed } = await createAdminClient().storage.from("report-screenshots").createSignedUrls(voicePaths, 3600);
+    for (const s of signed ?? []) if (s.signedUrl) voiceUrls.push(s.signedUrl);
+  }
+
   const vm = (report.verification_status && VERIFICATION_META[report.verification_status]) || VERIFICATION_META.pending;
   const profile = profileData as { username?: string; is_anonymous?: boolean; email?: string; user_type?: string } | null;
 
@@ -222,6 +229,18 @@ async function ReportDetail({ id }: { id: string }) {
               <Field label="WHY - Activism Context" value={report.activism_context} />
             )}
           </div>
+
+          {/* Voice note: private bucket, so each file is played through a short-lived signed link. */}
+          {voiceUrls.length > 0 && (
+            <div className="rounded-2xl border border-line bg-surface shadow-[0_1px_2px_rgba(28,21,34,0.04)] p-6 space-y-3">
+              <h2 className="font-bold text-base">Voice note from the reporter</h2>
+              {voiceUrls.map((u) => (
+                // eslint-disable-next-line jsx-a11y/media-has-caption
+                <audio key={u} src={u} controls className="w-full" />
+              ))}
+              <p className="text-xs text-muted">Heard only by the response team. The link expires in an hour.</p>
+            </div>
+          )}
 
           {/* Support requested */}
           <div className="rounded-2xl border border-line bg-surface shadow-[0_1px_2px_rgba(28,21,34,0.04)] p-6 space-y-3">

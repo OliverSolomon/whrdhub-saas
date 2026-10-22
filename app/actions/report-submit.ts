@@ -59,6 +59,8 @@ export interface ReportData {
   support_needed: string[];
   /** What the reporter typed under "Other" support. */
   support_other?: string;
+  /** Storage paths of recorded voice notes (private bucket). */
+  voice_note_paths?: string[];
   risks?: string[];
   urgency: "immediate" | "within_week" | "no_rush";
   consent_to_followup: boolean;
@@ -172,6 +174,8 @@ export async function submitReport(data: ReportData): Promise<SubmitReportResult
       // SUPPORT
       support_needed:      data.support_needed,
       support_other:       data.support_other || null,
+      // Only sent when there is one, so filing keeps working before the voice-note column exists.
+      ...(data.voice_note_paths?.length ? { voice_note_paths: data.voice_note_paths } : {}),
       risks:               data.risks?.length ? data.risks : [],
       urgency:             data.urgency,
       consent_to_followup: data.consent_to_followup,
