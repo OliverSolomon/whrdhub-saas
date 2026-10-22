@@ -2905,22 +2905,9 @@ where not exists (select 1 from public.resources r where r.slug = v.slug);
 -- ║  5. Online-listening sample signals                                     ║
 -- ╚════════════════════════════════════════════════════════════════════════╝
 
-insert into public.listening_results (source, source_id, permalink, author, content, matched_keywords, severity, status)
-select v.source, v.source_id, v.permalink, v.author, v.content, v.kw, v.severity, 'new'
-from (values
-  ('facebook', 'demo-1', 'https://facebook.com/', 'Public page comment',
-   'Threatening language directed at a named defender following a county assembly hearing.',
-   array['threat'], 'medium'),
-  ('facebook', 'demo-2', 'https://facebook.com/', 'Public page comment',
-   'Coordinated harassment thread naming several women organisers.',
-   array['harassment'], 'high')
-) as v(source, source_id, permalink, author, content, kw, severity)
--- The unique index on (source, source_id) is partial, so ON CONFLICT cannot
--- target it without restating the predicate. A guard is clearer.
-where not exists (
-  select 1 from public.listening_results lr
-   where lr.source = v.source and lr.source_id = v.source_id
-);
+-- No sample posts are seeded any more: listening shows only what was really captured.
+-- This clears the two that earlier versions of this script inserted.
+delete from public.listening_results where source_id in ('demo-1', 'demo-2');
 
 -- ── Referral states, so the matching console shows a real spread ────────────
 --

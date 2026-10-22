@@ -1,56 +1,108 @@
 import { createAdminClient } from "@/lib/supabase/admin";
-import { recentInstagramPosts, instagramConfigured } from "@/lib/social-fetch";
+import { recentInstagramPosts, recentXPosts, recentFacebookPosts, instagramConfigured, socialEnabled } from "@/lib/social-fetch";
 import { ingestItems } from "@/lib/listening";
 import { broadcastToStaff } from "@/lib/alerts";
+import { fetchRecentContent, metaConfigured } from "@/lib/meta";
 import type { RawItem } from "@/lib/meta";
 
 /**
  * Listening that does not wait to be handed a link. An administrator lists
- * Instagram accounts and hashtags worth watching; a scan reads their latest
- * public posts, runs them through the same keyword and Jev triage as everything
- * else, and keeps what matters. It also notices when several captured posts
- * point at the same person, which is how a targeted campaign shows itself.
+ * Instagram and X accounts and hashtags worth watching; a scan reads their
+ * latest public posts (and the Hub's own Facebook page when it is connected),
+ * runs them through the same keyword and triage as everything else, and keeps
+ * what matters. It also notices when several captured posts point at the same
+ * person, which is how a targeted campaign shows itself.
  *
  * Bounded on purpose: each source is one provider run, so a scan reads at most
- * MAX_SOURCES sources, the least recently scanned first.
+ * MAX_SOURCES sources, the least recently scanned first. The daily job and the
+ * "Scan now" button both come through scanAll.
  */
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = () => createAdminClient() as any;
 
-const MAX_SOURCES = Math.max(1, Math.min(10, Number(process.env.SOCIAL_DAILY_CAP) || 10));
+const MAX_SOURCES = Math.max(1, Math.min(15, Number(process.env.SOCIAL_DAILY_CAP) || 15));
 const POSTS_PER_SOURCE = 10;
 /** Captured posts naming the same account within a day before the team is warned. */
 const BURST_AT = 3;
 
-export interface Source { id: string; platform: string; kind: "profile" | "hashtag"; handle: string; note: string | null; active: boolean; last_scanned_at: string | null; last_result: string | null }
+export interface Source {
+  id: string;
+  platform: "instagram" | "x" | "facebook";
+  kind: "profile" | "hashtag";
+  handle: string;
+  note: string | null;
+  active: boolean;
+  last_scanned_at: string | null;
+  last_result: string | null;
+}
 
-export async function scanSources(onlyId?: string): Promise<{ sources: number; read: number; stored: number; bursts: number; message?: string }> {
-  if (!instagramConfigured()) return { sources: 0, read: 0, stored: 0, bursts: 0, message: "Instagram is not connected (APIFY_TOKEN)." };
+export interface ScanSummary { sources: number; read: number; stored: number; bursts: number; message?: string }
 
-  let q = db().from("listening_sources").select("id, platform, kind, handle").eq("active", true).eq("platform", "instagram");
+/** The watched accounts and hashtags. */
+export async function scanSources(onlyId?: string): Promise<ScanSummary> {
+  const canInstagram = instagramConfigured();
+  const canX = socialEnabled() && !!process.env.APIFY_TOKEN;
+  if (!canInstagram && !canX) return { sources: 0, read: 0, stored: 0, bursts: 0 };
+
+  let q = db().from("listening_sources").select("id, platform, kind, handle").eq("active", true);
   if (onlyId) q = q.eq("id", onlyId);
   const { data, error } = await q.order("last_scanned_at", { ascending: true, nullsFirst: true }).limit(MAX_SOURCES);
-  if (error) return { sources: 0, read: 0, stored: 0, bursts: 0, message: "Run migration 018 to add watched sources." };
+  // The table is created by a migration; until then there is simply nothing watched.
+  if (error) return { sources: 0, read: 0, stored: 0, bursts: 0 };
 
   let read = 0;
   let stored = 0;
-  for (const src of (data ?? []) as Pick<Source, "id" | "kind" | "handle">[]) {
+  for (const src of (data ?? []) as Pick<Source, "id" | "platform" | "kind" | "handle">[]) {
     let result = "ok";
     try {
-      const posts = await recentInstagramPosts(src.kind, src.handle, POSTS_PER_SOURCE);
+      const posts = src.platform === "x"
+        ? await recentXPosts(src.kind, src.handle, POSTS_PER_SOURCE)
+        : src.platform === "facebook"
+          ? await recentFacebookPosts(src.handle, POSTS_PER_SOURCE)
+          : await recentInstagramPosts(src.kind, src.handle, POSTS_PER_SOURCE);
       read += posts.length;
-      const items: RawItem[] = posts.map((p) => ({ source: "instagram", source_id: p.sourceId, permalink: p.url, author: p.author, content: p.text }));
+      const items: RawItem[] = posts.map((p) => ({ source: p.source, source_id: p.sourceId, permalink: p.url, author: p.author, content: p.text }));
       const r = await ingestItems(items, { triage: true });
       stored += r.stored;
       result = `${posts.length} read, ${r.stored} kept`;
     } catch (err) {
-      result = `failed: ${err instanceof Error ? err.message.slice(0, 80) : "unknown"}`;
+      result = `could not be read${err instanceof Error ? ` (${err.message.slice(0, 40)})` : ""}`;
     }
     await db().from("listening_sources").update({ last_scanned_at: new Date().toISOString(), last_result: result }).eq("id", src.id);
   }
 
-  return { sources: (data ?? []).length, read, stored, bursts: await detectBursts() };
+  return { sources: (data ?? []).length, read, stored, bursts: 0 };
+}
+
+/**
+ * Everything, across social media: the Hub's Facebook page (when connected),
+ * every watched Instagram and X account or hashtag, then a check for campaigns.
+ */
+export async function scanAll(): Promise<ScanSummary> {
+  let read = 0;
+  let stored = 0;
+
+  if (metaConfigured()) {
+    try {
+      const items = await fetchRecentContent();
+      read += items.length;
+      stored += (await ingestItems(items, { triage: true })).stored;
+    } catch (err) {
+      console.error("[listening] Facebook page scan failed:", err instanceof Error ? err.message : err);
+    }
+  }
+
+  const watched = await scanSources();
+  read += watched.read;
+  stored += watched.stored;
+  const bursts = await detectBursts();
+
+  const nothing = read === 0 && watched.sources === 0 && !metaConfigured();
+  return {
+    sources: watched.sources, read, stored, bursts,
+    message: nothing ? "There is nothing to scan yet. Add an account or hashtag to watch, or paste links to check." : undefined,
+  };
 }
 
 /**

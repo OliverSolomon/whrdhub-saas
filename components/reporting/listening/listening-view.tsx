@@ -2,12 +2,12 @@
 
 import { useState } from "react";
 import {
-  RadioTower, RefreshCw, Loader2, Plus, X, Circle, Plug, ExternalLink,
-  Check, EyeOff, Search, Stethoscope, AlertTriangle, Link2, ShieldAlert,
+  RadioTower, RefreshCw, Loader2, Plus, X, Circle, ExternalLink,
+  EyeOff, Search, Link2, ShieldAlert,
 } from "lucide-react";
-import { pollMeta, scanSocialLinks, seedPoliticalKeywords, addSource, toggleSource, removeSource, scanSourcesNow, addKeyword, removeKeyword, toggleKeyword, setResultStatus, diagnoseMeta } from "@/app/actions/listening";
-import type { MetaDiagnosis } from "@/lib/meta";
+import { scanSocialLinks, seedPoliticalKeywords, addSource, muteAccount, toggleSource, removeSource, scanAllNow, addKeyword, removeKeyword, toggleKeyword, setResultStatus } from "@/app/actions/listening";
 import type { Source } from "@/lib/listening-sources";
+import { SUGGESTED_SOURCES } from "@/lib/listening-suggestions";
 import { useRouter } from "next/navigation";
 
 export interface Keyword { id: string; word: string; severity: string; active: boolean }
@@ -25,6 +25,8 @@ const AI_LABEL: Record<string, { label: string; cls: string }> = {
 };
 const isLikelyReal = (c?: string | null) => c === "real_incident" || c === "targeted_abuse";
 
+const PLATFORM_LABEL: Record<string, string> = { instagram: "Instagram", x: "X", facebook: "Facebook" };
+
 const SEV: Record<string, string> = {
   high: "bg-red-100 text-red-700 border-red-200",
   medium: "bg-amber-100 text-amber-700 border-amber-200",
@@ -32,29 +34,19 @@ const SEV: Record<string, string> = {
 };
 const STATUS_TABS = ["new", "reviewing", "actioned", "dismissed"] as const;
 
-export function ListeningView({ connected, socialReady, triageReady, sources, keywords, results }: { connected: boolean; socialReady: boolean; triageReady: boolean; sources: Source[]; keywords: Keyword[]; results: Result[] }) {
+export function ListeningView({ sources, keywords, results }: { sources: Source[]; keywords: Keyword[]; results: Result[] }) {
   const router = useRouter();
   const [tab, setTab] = useState<(typeof STATUS_TABS)[number]>("new");
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [newWord, setNewWord] = useState("");
   const [newSev, setNewSev] = useState("high");
-  const [diag, setDiag] = useState<MetaDiagnosis | null>(null);
   const [links, setLinks] = useState("");
   const [problems, setProblems] = useState<string[]>([]);
   const [onlyReal, setOnlyReal] = useState(false);
+  const [srcPlatform, setSrcPlatform] = useState<"instagram" | "x" | "facebook">("instagram");
   const [srcKind, setSrcKind] = useState<"profile" | "hashtag">("profile");
   const [srcValue, setSrcValue] = useState("");
-
-  // Deliberately separate from `run`: a diagnosis is not a mutation, it should
-  // not refresh the page, and its result is a panel rather than a one-line message.
-  const testConnection = async () => {
-    setBusy("diagnose"); setMsg(null); setDiag(null);
-    const res = await diagnoseMeta();
-    setBusy(null);
-    if ("error" in res) { setMsg(res.error); return; }
-    setDiag(res.diagnosis);
-  };
 
   const run = async (tag: string, fn: () => Promise<{ error?: string; ok?: boolean; stored?: number; scanned?: number; added?: number; problems?: string[] } | undefined>) => {
     setBusy(tag); setMsg(null); setProblems([]);
@@ -62,16 +54,14 @@ export function ListeningView({ connected, socialReady, triageReady, sources, ke
     setBusy(null);
     if (res?.error) { setMsg(res.error); return; }
     if (typeof res?.added === "number") setMsg(res.added ? `Added ${res.added} keyword(s).` : "Those keywords are already on your list.");
-    if (typeof res?.stored === "number") setMsg(`Read ${res.scanned} post(s), captured ${res.stored} that matched your keywords.`);
+    if (typeof res?.stored === "number") setMsg(res.scanned ? `Looked at ${res.scanned} post${res.scanned === 1 ? "" : "s"} and kept ${res.stored} for review.` : "Scan finished. Nothing new to look at.");
     if (res?.problems?.length) setProblems(res.problems);
     router.refresh();
   };
 
+  const lastScan = sources.map((x) => x.last_scanned_at).filter(Boolean).sort().pop() ?? null;
   const counts = STATUS_TABS.reduce((a, s) => ({ ...a, [s]: results.filter((r) => r.status === s).length }), {} as Record<string, number>);
-  // What the team has decided so far, against what Jev said: the evidence that it is learning the right line.
-  const judged = results.filter((r) => r.ai_class && (r.status === "actioned" || r.status === "dismissed"));
-  const flaggedReal = results.filter((r) => isLikelyReal(r.ai_class) && (r.status === "actioned" || r.status === "dismissed"));
-  const flaggedRealActed = flaggedReal.filter((r) => r.status === "actioned").length;
+  const anySorted = results.some((r) => r.ai_class);
   const shown = results
     .filter((r) => r.status === tab)
     .filter((r) => !onlyReal || isLikelyReal(r.ai_class))
@@ -83,96 +73,26 @@ export function ListeningView({ connected, socialReady, triageReady, sources, ke
       {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-black text-ink flex items-center gap-2"><RadioTower className="w-6 h-6 text-purple" /> Online Listening</h1>
-          <p className="text-sm text-muted mt-1">Watches Facebook, Instagram and X for abuse and political-harassment keywords, and flags what it finds for review.</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-        <button onClick={testConnection} disabled={busy !== null}
-          title="Ask Meta directly whether this Page can be read"
-          className="inline-flex items-center gap-2 rounded-lg border border-line bg-white text-ink px-4 h-10 text-sm font-bold hover:bg-paper disabled:opacity-50">
-          {busy === "diagnose" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Stethoscope className="w-4 h-4" />} Test connection
-        </button>
-        <button onClick={() => run("poll", pollMeta)} disabled={busy !== null || !connected}
-          title={connected ? "Scan recent posts now" : "Connect Meta to enable syncing"}
-          className="inline-flex items-center gap-2 rounded-lg bg-purple text-white px-4 h-10 text-sm font-bold hover:bg-purple/90 disabled:opacity-50 disabled:cursor-not-allowed">
-          {busy === "poll" ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} Sync now
-        </button>
-        </div>
-      </div>
-
-      {/* Diagnosis: what Meta actually said, check by check. */}
-      {diag && (
-        <div className={`rounded-xl border p-4 ${diag.canPull ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}>
-          <div className="flex items-start gap-3">
-            {diag.canPull
-              ? <Check className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
-              : <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />}
-            <div className="min-w-0 flex-1">
-              <p className={`text-sm font-bold ${diag.canPull ? "text-emerald-800" : "text-amber-900"}`}>{diag.summary}</p>
-              <p className="text-xs text-muted mt-1">Checked against Meta just now.</p>
-              <ul className="mt-3 space-y-1.5">
-                {diag.checks.map((c) => (
-                  <li key={c.name} className="flex items-start gap-2 text-sm">
-                    {c.ok
-                      ? <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                      : <X className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />}
-                    <span className="min-w-0 break-words"><span className="font-semibold text-ink">{c.name}</span> <span className="text-muted">— {c.detail}</span></span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <button onClick={() => setDiag(null)} className="text-muted hover:text-ink shrink-0" aria-label="Dismiss"><X className="w-4 h-4" /></button>
-          </div>
-        </div>
-      )}
-
-      {/* Connection status */}
-      {connected && !(diag && !diag.canPull) ? (
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 flex items-start gap-3">
-          <Check className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
-          <p className="text-sm text-emerald-800"><span className="font-bold">Connected to Meta.</span> New comments on your Page are matched in real time via the webhook; use Sync now to backfill recent posts.</p>
-        </div>
-      ) : (
-        <div className="rounded-xl border border-line bg-paper p-5">
-          <div className="flex items-start gap-3">
-            <span className="w-10 h-10 rounded-xl bg-purple/10 text-purple grid place-items-center shrink-0"><Plug className="w-5 h-5" /></span>
-            <div className="min-w-0">
-              <h3 className="font-bold text-ink">Connect Meta to activate listening</h3>
-              <p className="text-sm text-muted mt-0.5">Everything is wired up and waiting on your Meta credentials. You can add and fine-tune the watch keywords below right now; captured signals will appear here the moment it is connected.</p>
-              <ol className="mt-3 space-y-1.5 text-sm text-muted list-decimal pl-5">
-                <li>Add <code>META_PAGE_ID</code>, <code>META_PAGE_ACCESS_TOKEN</code>, <code>META_APP_SECRET</code> and <code>META_VERIFY_TOKEN</code> to the environment. An App ID and App Secret alone are not enough — the token must be a <span className="font-semibold">Page</span> access token.</li>
-                <li>In the Meta App dashboard, point the Page webhook at <code>/api/meta/webhook</code> and subscribe to &quot;feed&quot;.</li>
-                <li>Come back here, press <span className="font-semibold">Test connection</span> to confirm Meta accepts it, then <span className="font-semibold">Sync now</span> to pull in recent posts.</li>
-              </ol>
-            </div>
-          </div>
-        </div>
-      )}
-      {msg && !diag && <p className="text-sm font-semibold text-purple">{msg}</p>}
-
-      {triageReady && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-surface px-4 py-3 text-sm">
-          <p className="text-ink">
-            <span className="font-bold">Jev is sorting captures.</span>{" "}
-            <span className="text-muted">
-              {judged.length > 0 && flaggedReal.length > 0
-                ? `Of the ${flaggedReal.length} it called real or abusive that you have decided on, you acted on ${flaggedRealActed}. It uses your recent decisions to judge the next ones.`
-                : "Act on or dismiss captures and it learns where you draw the line."}
-            </span>
+          <p className="eyebrow mb-1.5">Early warning</p>
+          <h1 className="font-display text-3xl font-bold tracking-tight text-ink flex items-center gap-2.5"><RadioTower className="w-7 h-7 text-purple" /> Online listening</h1>
+          <p className="text-sm text-muted mt-1.5 max-w-2xl">
+            Watches Facebook, Instagram and X for threats and abuse aimed at defenders, and flags what it finds for you to review.
+            Everything you watch is scanned automatically every day.
+            {lastScan && <> Last scan: {new Date(lastScan).toLocaleString("en-KE", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}.</>}
           </p>
-          <label className="inline-flex cursor-pointer items-center gap-2 text-xs font-semibold text-ink">
-            <input type="checkbox" checked={onlyReal} onChange={(e) => setOnlyReal(e.target.checked)} className="accent-[#734e9e]" />
-            Only likely real cases
-          </label>
         </div>
-      )}
+        <button onClick={() => run("all", scanAllNow)} disabled={busy !== null}
+          className="inline-flex items-center gap-2 rounded-xl bg-purple text-white px-5 h-11 text-sm font-bold hover:bg-purple/90 disabled:opacity-50">
+          {busy === "all" ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} Scan now
+        </button>
+      </div>
+      {msg && <p role="status" className="rounded-xl border border-purple/20 bg-purple-050 px-4 py-2.5 text-sm font-semibold text-purple-700">{msg}</p>}
 
       {/* Social links */}
       <section className="rounded-2xl border border-line bg-surface p-5 shadow-[0_1px_2px_rgba(28,21,34,0.04)]">
-        <h2 className="font-bold text-ink flex items-center gap-2"><Link2 className="w-4 h-4 text-purple" /> Scan Instagram and X links</h2>
+        <h2 className="font-bold text-ink flex items-center gap-2"><Link2 className="w-4 h-4 text-purple" /> Check specific posts</h2>
         <p className="text-xs text-muted mt-1">
-          Paste links to public posts, one per line. Their text is read and matched against your keywords; nothing but the post itself is kept.
-          {!socialReady && " Instagram is not connected yet: add APIFY_TOKEN. X links work without a key."}
+          Paste links to public Instagram or X posts, one per line. Only the post itself is read and kept.
         </p>
         <textarea value={links} onChange={(e) => setLinks(e.target.value)} rows={3}
           placeholder={"https://www.instagram.com/p/…\nhttps://x.com/someone/status/…"}
@@ -181,7 +101,7 @@ export function ListeningView({ connected, socialReady, triageReady, sources, ke
           <button onClick={() => run("scan", async () => { const r = await scanSocialLinks(links); if (r && "ok" in r && r.ok) setLinks(""); return r; })}
             disabled={busy !== null || !links.trim()}
             className="inline-flex items-center gap-2 rounded-lg bg-purple text-white px-4 h-10 text-sm font-bold hover:bg-purple/90 disabled:opacity-50">
-            {busy === "scan" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />} Scan links
+            {busy === "scan" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />} Check links
           </button>
         </div>
         {problems.length > 0 && (
@@ -193,43 +113,65 @@ export function ListeningView({ connected, socialReady, triageReady, sources, ke
 
       {/* Watched accounts and hashtags */}
       <section className="rounded-2xl border border-line bg-surface p-5 shadow-[0_1px_2px_rgba(28,21,34,0.04)]">
-        <h2 className="font-bold text-ink flex items-center gap-2"><RadioTower className="w-4 h-4 text-purple" /> Watched accounts and hashtags</h2>
+        <h2 className="font-bold text-ink flex items-center gap-2"><RadioTower className="w-4 h-4 text-purple" /> Accounts and hashtags to watch</h2>
         <p className="text-xs text-muted mt-1">
-          Their latest public Instagram posts are read once a day, sorted like everything else, and you are warned when several captured posts name the same person.
-          {!socialReady && " Instagram is not connected yet: add APIFY_TOKEN."}
+          Their latest public posts are read every day. You are warned when several captured posts name the same person.
         </p>
         <ul className="mt-3 divide-y divide-line rounded-xl border border-line">
-          {sources.length === 0 && <li className="p-3 text-sm text-muted">Nothing watched yet.</li>}
+          {sources.length === 0 && <li className="p-3 text-sm text-muted">Nothing watched yet. Add an account or a hashtag below.</li>}
           {sources.map((s) => (
             <li key={s.id} className="flex flex-wrap items-center gap-3 p-3">
+              <span className="rounded-full bg-paper px-2 py-0.5 text-[11px] font-bold text-muted">{PLATFORM_LABEL[s.platform] ?? s.platform}</span>
               <span className={`text-sm font-semibold ${s.active ? "text-ink" : "text-muted line-through"}`}>
                 {s.kind === "hashtag" ? "#" : "@"}{s.handle}
               </span>
               <span className="text-xs text-muted">
-                {s.last_scanned_at ? `Scanned ${new Date(s.last_scanned_at).toLocaleDateString()} · ${s.last_result ?? ""}` : "Not scanned yet"}
+                {!s.active
+                  ? (s.kind === "profile" ? "Paused: posts from this account are ignored" : "Paused: not being scanned")
+                  : s.last_scanned_at ? `Scanned ${new Date(s.last_scanned_at).toLocaleDateString()} · ${s.last_result ?? ""}` : "Not scanned yet"}
               </span>
               <span className="ml-auto flex items-center gap-2">
-                <button onClick={() => run(`ts-${s.id}`, () => toggleSource(s.id, !s.active))} className="text-xs font-semibold text-purple hover:underline">{s.active ? "Pause" : "Resume"}</button>
+                <button onClick={() => run(`ts-${s.id}`, () => toggleSource(s.id, !s.active))} className="text-xs font-semibold text-purple hover:underline">{s.active ? "Pause listening" : "Resume listening"}</button>
                 <button onClick={() => run(`rs-${s.id}`, () => removeSource(s.id))} className="text-xs font-semibold text-rose-600 hover:underline">Remove</button>
               </span>
             </li>
           ))}
         </ul>
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          <select value={srcKind} onChange={(e) => setSrcKind(e.target.value as "profile" | "hashtag")} className="h-9 rounded-lg border border-line bg-surface px-2 text-sm">
-            <option value="profile">Account</option><option value="hashtag">Hashtag</option>
+          <select value={srcPlatform} onChange={(e) => { const v = e.target.value as "instagram" | "x" | "facebook"; setSrcPlatform(v); if (v === "facebook") setSrcKind("profile"); }} aria-label="Platform" className="h-9 rounded-lg border border-line bg-surface px-2 text-sm">
+            <option value="instagram">Instagram</option><option value="x">X</option><option value="facebook">Facebook page</option>
           </select>
-          <input value={srcValue} onChange={(e) => setSrcValue(e.target.value)} placeholder={srcKind === "hashtag" ? "e.g. endfemicideke" : "e.g. an account name"}
+          {srcPlatform !== "facebook" && (
+            <select value={srcKind} onChange={(e) => setSrcKind(e.target.value as "profile" | "hashtag")} aria-label="Account or hashtag" className="h-9 rounded-lg border border-line bg-surface px-2 text-sm">
+              <option value="profile">Account</option><option value="hashtag">Hashtag</option>
+            </select>
+          )}
+          <input value={srcValue} onChange={(e) => setSrcValue(e.target.value)} placeholder={srcKind === "hashtag" && srcPlatform !== "facebook" ? "one or more, e.g. endfemicideke" : srcPlatform === "facebook" ? "page name, as in facebook.com/pagename" : "one or more account names"}
             className="h-9 min-w-0 flex-1 rounded-lg border border-line bg-surface px-3 text-sm focus:outline-none focus:ring-2 focus:ring-purple/30" />
-          <button onClick={() => run("addsrc", async () => { const r = await addSource(srcKind, srcValue); if (!r?.error) setSrcValue(""); return r; })}
+          <button onClick={() => run("addsrc", async () => { const r = await addSource(srcPlatform, srcKind, srcValue); if (!r?.error) setSrcValue(""); return r; })}
             disabled={busy !== null || !srcValue.trim()} className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 h-9 text-sm font-semibold hover:bg-paper disabled:opacity-50">
             {busy === "addsrc" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Watch
           </button>
-          <button onClick={() => run("scansrc", scanSourcesNow)} disabled={busy !== null || sources.length === 0}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-purple text-white px-3 h-9 text-sm font-bold hover:bg-purple/90 disabled:opacity-50">
-            {busy === "scansrc" ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} Scan now
-          </button>
         </div>
+        {(() => {
+          const open = SUGGESTED_SOURCES.filter((g) => !sources.some((x) => x.platform === g.platform && x.kind === g.kind && x.handle.toLowerCase() === g.handle.toLowerCase()));
+          if (open.length === 0) return null;
+          return (
+            <div className="mt-4 border-t border-line pt-3">
+              <p className="eyebrow mb-2">Suggested accounts</p>
+              <div className="flex flex-wrap gap-2">
+                {open.map((g) => (
+                  <button key={`${g.platform}-${g.handle}`} onClick={() => run(`sg-${g.handle}`, () => addSource(g.platform, g.kind, g.handle))}
+                    disabled={busy !== null} title={`${g.focus}${g.check ? `. ${g.check}` : ""}`}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface px-3 py-1.5 text-xs font-semibold text-ink hover:bg-purple-050 disabled:opacity-50">
+                    {busy === `sg-${g.handle}` ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3 text-purple" />}
+                    {g.name} <span className="text-muted">{PLATFORM_LABEL[g.platform]}{g.check ? " (check)" : ""}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
       </section>
 
       {/* Keyword manager */}
@@ -270,7 +212,8 @@ export function ListeningView({ connected, socialReady, triageReady, sources, ke
 
       {/* Results */}
       <section>
-        <div className="flex gap-1 rounded-lg border border-line bg-paper p-1 w-fit mb-4">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex gap-1 rounded-lg border border-line bg-paper p-1 w-fit">
           {STATUS_TABS.map((s) => (
             <button key={s} onClick={() => setTab(s)}
               className={`rounded-md px-3 py-1.5 text-sm font-bold capitalize transition-colors ${tab === s ? "bg-surface text-purple shadow-sm" : "text-muted hover:text-ink"}`}>
@@ -278,11 +221,18 @@ export function ListeningView({ connected, socialReady, triageReady, sources, ke
             </button>
           ))}
         </div>
+        {anySorted && (
+          <label className="inline-flex cursor-pointer items-center gap-2 text-xs font-semibold text-ink">
+            <input type="checkbox" checked={onlyReal} onChange={(e) => setOnlyReal(e.target.checked)} className="accent-[#734e9e]" />
+            Only likely real cases
+          </label>
+        )}
+        </div>
 
         {shown.length === 0 ? (
           <div className="rounded-xl border border-dashed border-line p-10 text-center text-sm text-muted">
             <RadioTower className="w-8 h-8 mx-auto text-purple/60" />
-            <p className="mt-3">No {tab} signals. {connected || socialReady ? "Scan a link or Sync now to look for signals." : "Connect Meta or paste an X link to start capturing."}</p>
+            <p className="mt-3">Nothing {tab === "new" ? "new" : tab} here. {tab === "new" ? "Posts that match your keywords appear after the next scan, or press Scan now." : ""}</p>
           </div>
         ) : (
           <div className="grid sm:grid-cols-2 gap-3">
@@ -309,6 +259,13 @@ export function ListeningView({ connected, socialReady, triageReady, sources, ke
                     {r.status !== "dismissed" && <StatusBtn label="Dismiss" onClick={() => run(`s-${r.id}`, () => setResultStatus(r.id, "dismissed"))} busy={busy === `s-${r.id}`} />}
                   </div>
                   {r.author && <span className="text-xs text-muted truncate max-w-[8rem]">{r.author}</span>}
+                  {r.author && (r.source === "instagram" || r.source === "x") && (
+                    <button onClick={() => run(`mute-${r.id}`, () => muteAccount(r.source, r.author as string))} disabled={busy !== null}
+                      title="Keep this account on the list but ignore its posts from now on"
+                      className="text-[11px] font-semibold text-muted hover:text-rose-600 disabled:opacity-50">
+                      {busy === `mute-${r.id}` ? "…" : "Stop listening"}
+                    </button>
+                  )}
                   {r.permalink && <a href={r.permalink} target="_blank" rel="noopener noreferrer" className="text-purple shrink-0" title="Open original post"><ExternalLink className="w-4 h-4" /></a>}
                 </div>
               </article>

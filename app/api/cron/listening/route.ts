@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { timingSafeEqual } from "node:crypto";
-import { scanSources } from "@/lib/listening-sources";
+import { scanAll } from "@/lib/listening-sources";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -14,11 +14,11 @@ function authorised(req: Request): boolean {
   return given.length === expected.length && timingSafeEqual(Buffer.from(given), Buffer.from(expected));
 }
 
-/** Daily: read the watched accounts and hashtags, keep what matters, warn of campaigns. */
+/** Daily: scan every social source, keep what matters, warn of campaigns. */
 export async function GET(req: Request) {
   if (!authorised(req)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
-    return NextResponse.json({ ok: true, ...(await scanSources()) });
+    return NextResponse.json({ ok: true, ...(await scanAll()) });
   } catch (e) {
     console.error("[cron] listening failed:", e);
     return NextResponse.json({ ok: false }, { status: 500 });

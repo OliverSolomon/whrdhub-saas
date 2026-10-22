@@ -1,7 +1,4 @@
 import { createAdminClient } from "@/lib/supabase/admin";
-import { metaConfigured } from "@/lib/meta";
-import { instagramConfigured } from "@/lib/social-fetch";
-import { triageConfigured } from "@/lib/listening-triage";
 import type { Source } from "@/lib/listening-sources";
 import { ListeningView, type Keyword, type Result } from "@/components/reporting/listening/listening-view";
 
@@ -30,9 +27,6 @@ export default async function ListeningPage() {
 
   return (
     <ListeningView
-      connected={metaConfigured()}
-      socialReady={instagramConfigured()}
-      triageReady={triageConfigured()}
       sources={(sources ?? []) as Source[]}
       keywords={(keywords ?? []) as Keyword[]}
       results={(results ?? []) as Result[]}

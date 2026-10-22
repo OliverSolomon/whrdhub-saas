@@ -16,7 +16,7 @@ import { isIP } from "node:net";
  */
 
 export interface SocialPost {
-  source: "instagram" | "x";
+  source: "instagram" | "x" | "facebook";
   /** Stable id used to avoid capturing the same post twice. */
   sourceId: string;
   url: string;
@@ -95,8 +95,8 @@ async function igViaOembed(url: string, id: string): Promise<SocialPost | null> 
   return { source: "instagram", sourceId: id, url, author: trim(j.author_name, 80), text: text ?? "" };
 }
 
-async function apifyItems(input: Record<string, unknown>): Promise<Record<string, unknown>[]> {
-  const actor = (process.env.SOCIAL_ACTOR ?? "apify/instagram-scraper").replace("/", "~");
+async function apifyItems(input: Record<string, unknown>, actorName?: string): Promise<Record<string, unknown>[]> {
+  const actor = (actorName ?? process.env.SOCIAL_ACTOR ?? "apify/instagram-scraper").replace("/", "~");
   const res = await fetch(`https://api.apify.com/v2/acts/${actor}/run-sync-get-dataset-items?timeout=60&memory=512`, {
     method: "POST",
     headers: { Authorization: `Bearer ${process.env.APIFY_TOKEN}`, "Content-Type": "application/json" },
@@ -125,7 +125,7 @@ async function igViaApify(url: string, id: string): Promise<{ post: SocialPost |
 export async function instagramPost(raw: string): Promise<SocialResult> {
   const p = instagramPostUrl(raw);
   if (!p) return { status: "unsupported", post: null, message: "Only links to a single public Instagram post or reel can be read." };
-  if (!instagramConfigured()) return { status: "off", post: null, message: "Instagram is not switched on. Add APIFY_TOKEN." };
+  if (!instagramConfigured()) return { status: "off", post: null, message: "Instagram lookups are not available right now." };
   try {
     let post: SocialPost | null = null;
     let blocked = false;
@@ -167,6 +167,69 @@ export async function recentInstagramPosts(kind: "profile" | "hashtag", handle: 
   return posts;
 }
 
+/**
+ * The latest public posts from a watched X account or hashtag, through the same provider as Instagram.
+ * One provider run per call. Only the public text and author are read.
+ */
+export async function recentXPosts(kind: "profile" | "hashtag", handle: string, limit = 10): Promise<SocialPost[]> {
+  if (!enabled() || !hasApify() || !HANDLE.test(handle)) return [];
+  const actor = process.env.SOCIAL_X_ACTOR ?? "apidojo/tweet-scraper";
+  const items = await apifyItems(
+    {
+      ...(kind === "hashtag" ? { searchTerms: [`#${handle}`] } : { twitterHandles: [handle] }),
+      maxItems: Math.min(Math.max(limit, 1), 20),
+      sort: "Latest",
+    },
+    actor,
+  );
+  const posts: SocialPost[] = [];
+  for (const it of items) {
+    const id = trim(it.id, 40) ?? trim(it.id_str, 40);
+    const text = trim(it.fullText, 2000) ?? trim(it.text, 2000);
+    if (!id || !text) continue;
+    const author = (it.author ?? it.user) as Record<string, unknown> | undefined;
+    const name = trim(author?.userName, 40) ?? trim(author?.screen_name, 40);
+    posts.push({
+      source: "x",
+      sourceId: id,
+      url: trim(it.url, 300) ?? trim(it.twitterUrl, 300) ?? `https://x.com/i/status/${id}`,
+      author: name ? `@${name}` : null,
+      text,
+    });
+  }
+  return posts;
+}
+
+/**
+ * The latest public posts on a Facebook page. Meta only lets an app read pages it
+ * administers, so a page we do not run is read through the same provider as
+ * Instagram. One provider run per call; only the public text and page name are kept.
+ */
+export async function recentFacebookPosts(handle: string, limit = 10): Promise<SocialPost[]> {
+  if (!enabled() || !hasApify() || !HANDLE.test(handle)) return [];
+  const actor = process.env.SOCIAL_FB_ACTOR ?? "apify/facebook-posts-scraper";
+  const items = await apifyItems(
+    { startUrls: [{ url: `https://www.facebook.com/${handle}/` }], resultsLimit: Math.min(Math.max(limit, 1), 20) },
+    actor,
+  );
+  const posts: SocialPost[] = [];
+  for (const it of items) {
+    if (it.error || it.errorDescription) continue;
+    const id = trim(it.postId, 60) ?? trim(it.id, 60);
+    const text = trim(it.text, 2000) ?? trim(it.message, 2000);
+    if (!id || !text) continue;
+    const user = it.user as Record<string, unknown> | undefined;
+    posts.push({
+      source: "facebook",
+      sourceId: `fb-${id}`,
+      url: trim(it.postUrl, 300) ?? trim(it.url, 300) ?? `https://www.facebook.com/${handle}/`,
+      author: trim(it.pageName, 80) ?? trim(user?.name, 80),
+      text,
+    });
+  }
+  return posts;
+}
+
 /* ------------------------------------------------------------------ X */
 
 const X_STATUS = /^\/(?:[A-Za-z0-9_]{1,15}|i|web)\/status(?:es)?\/(\d{5,25})/;
@@ -202,7 +265,7 @@ async function expandTco(href: string): Promise<string | null> {
 export async function xPost(raw: string): Promise<SocialResult> {
   const p = xStatusUrl(raw);
   if (!p) return { status: "unsupported", post: null, message: "Only links to a single public post on X can be read." };
-  if (!enabled()) return { status: "off", post: null, message: "Social lookups are switched off." };
+  if (!enabled()) return { status: "off", post: null, message: "Social lookups are paused." };
   try {
     const res = await fetch(
       `https://publish.twitter.com/oembed?${new URLSearchParams({ url: p.url, omit_script: "true", dnt: "true" })}`,

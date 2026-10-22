@@ -16,12 +16,20 @@ import { isActionable, triagePosts, type Triage } from "@/lib/listening-triage";
  * is ever dismissed automatically.
  */
 export async function ingestItems(
-  items: RawItem[],
+  incoming: RawItem[],
   opts: { triage?: boolean } = {},
 ): Promise<{ stored: number; triaged: number }> {
-  if (!items.length) return { stored: 0, triaged: 0 };
+  if (!incoming.length) return { stored: 0, triaged: 0 };
+  let items = incoming;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = createAdminClient() as any;
+
+  // Accounts an administrator has paused stay on the list but are never listened to: their posts are
+  // skipped wherever they turn up (hashtag scans, pasted links, the Facebook page). Nothing already stored is touched.
+  const { data: paused } = await db.from("listening_sources").select("platform, handle").eq("kind", "profile").eq("active", false);
+  const mutedAccounts = new Set(((paused ?? []) as { platform: string; handle: string }[]).map((p) => `${p.platform}:${p.handle.toLowerCase()}`));
+  items = items.filter((it) => !mutedAccounts.has(`${it.source}:${(it.author ?? "").replace(/^@/, "").toLowerCase()}`));
+  if (!items.length) return { stored: 0, triaged: 0 };
 
   const { data: kw } = await db.from("listening_keywords").select("word, severity").eq("active", true);
   const keywords: Keyword[] = (kw ?? []).map((k: { word: string; severity: string }) => ({ word: k.word, severity: k.severity }));
