@@ -5,9 +5,11 @@
  * for "which of these is it" and "yes or no". The wrong one for writing,
  * arithmetic or counting.
  *
- * Jev only. There is deliberately no OpenRouter fallback: when the key is
- * missing or Jev does not answer, every function returns null and the caller
- * keeps using its own rule. Nothing here may be required for a page to work.
+ * Jev is reached through OpenRouter (OPENROUTER_API_KEY), with TypeSafe's own
+ * API (TYPESAFE_API_KEY) as the spare. Only Jev is ever asked: no general
+ * language model is used here. When neither route answers, every function
+ * returns null and the caller keeps using its own rule. Nothing here may be
+ * required for a page to work.
  *
  * Privacy: text sent here leaves our servers. Public posts from social media are
  * fine. A reporter's private report is not, and is only ever sent when
@@ -22,30 +24,24 @@ export interface Choice<K extends string> {
 }
 
 const jevKey = () => process.env.TYPESAFE_API_KEY || process.env.JEV_API_KEY || "";
+const routerKey = () => process.env.OPENROUTER_API_KEY || "";
 
-/** True when Jev can be asked anything at all. */
-export const decideConfigured = () => !!jevKey();
+/** True when Jev can be asked anything at all (through OpenRouter, or TypeSafe's own API). */
+export const decideConfigured = () => !!(routerKey() || jevKey());
 
 /** Private reports are sent to Jev only on an explicit, deliberate opt-in. */
 export const jevMayReadReports = () => decideConfigured() && (process.env.JEV_PRIVATE_REPORTS ?? "").toLowerCase() === "on";
 
-const ENDPOINT = "https://api.typesafe.ai/v1/systemone";
-
 interface Answer { choice: string; probabilities: Record<string, number>; confidence: number }
 
-async function ask(state: string, instructions: string, criteria: Record<string, string>): Promise<Answer | null> {
-  const key = jevKey();
-  if (!key) return null;
+/** One System One call. The two routes differ only in URL, key, model name and how the state is wrapped. */
+async function call(url: string, key: string, model: string, state: unknown, instructions: string, criteria: Record<string, string>): Promise<Answer | null> {
   try {
-    const res = await fetch(ENDPOINT, {
+    const res = await fetch(url, {
       method: "POST",
       signal: AbortSignal.timeout(8_000),
       headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: process.env.JEV_MODEL_DIRECT || "jev-latest",
-        state: state.slice(0, 24_000),
-        questions: { q: { type: "choice", instructions, criteria } },
-      }),
+      body: JSON.stringify({ model, state, questions: { q: { type: "choice", instructions, criteria } } }),
     });
     if (!res.ok) return null;
     const j = (await res.json()) as { answers?: { q?: { choice?: string; probabilities?: Record<string, number>; confidence?: number } } };
@@ -55,6 +51,19 @@ async function ask(state: string, instructions: string, criteria: Record<string,
   } catch {
     return null;
   }
+}
+
+/** OpenRouter first (Jev is served there as typesafe/jev); TypeSafe's own API is the spare. */
+async function ask(state: string, instructions: string, criteria: Record<string, string>): Promise<Answer | null> {
+  const text = state.slice(0, 24_000);
+  const viaRouter = routerKey();
+  if (viaRouter) {
+    const r = await call("https://openrouter.ai/api/alpha/decisions", viaRouter, process.env.JEV_MODEL || "typesafe/jev-1.13", { text }, instructions, criteria);
+    if (r) return r;
+  }
+  const direct = jevKey();
+  if (direct) return call("https://api.typesafe.ai/v1/systemone", direct, process.env.JEV_MODEL_DIRECT || "jev-latest", text, instructions, criteria);
+  return null;
 }
 
 /** Pick one of the given answers. Null when Jev is not configured or did not answer. */

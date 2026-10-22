@@ -12,6 +12,7 @@ import { getReportingAccess } from "@/lib/reporting-access";
 import { incidentLabel, riskLabel, supportLabel } from "@/lib/reporting-options";
 import { urgencyMeta } from "@/lib/urgency";
 import { generaliseArea } from "@/lib/geo-privacy";
+import { suggestSupportCategory } from "@/lib/jev-uses";
 
 const VERIFICATION_META: Record<string, { label: string; icon: React.ReactNode; variant: "info" | "success" | "destructive" | "warning" }> = {
   pending:         { label: "Pending Fact-Check", icon: <HelpCircle className="w-4 h-4" />, variant: "info" },
@@ -72,6 +73,9 @@ async function ReportDetail({ id }: { id: string }) {
     const { data: signed } = await createAdminClient().storage.from("report-screenshots").createSignedUrls(voicePaths, 3600);
     for (const s of signed ?? []) if (s.signedUrl) voiceUrls.push(s.signedUrl);
   }
+
+  // What category does the free-text "Other" request fit? Only when the deployment has opted in to sending report text to Jev.
+  const supportSuggestion = report.support_other ? await suggestSupportCategory(report.support_other as string) : null;
 
   const vm = (report.verification_status && VERIFICATION_META[report.verification_status]) || VERIFICATION_META.pending;
   const profile = profileData as { username?: string; is_anonymous?: boolean; email?: string; user_type?: string } | null;
@@ -252,6 +256,11 @@ async function ReportDetail({ id }: { id: string }) {
               <div className="text-sm bg-paper border border-line rounded-lg p-3">
                 <p className="text-xs font-semibold uppercase tracking-wider text-muted mb-1">Other support, in their words</p>
                 <p className="whitespace-pre-line text-ink">{report.support_other as string}</p>
+                {supportSuggestion && (
+                  <p className="mt-2 text-xs font-semibold text-purple-700">
+                    Looks like a request for: {supportSuggestion.label} ({Math.round(supportSuggestion.confidence * 100)}%)
+                  </p>
+                )}
               </div>
             )}
             {((report.risks as string[]) ?? []).length > 0 && (
