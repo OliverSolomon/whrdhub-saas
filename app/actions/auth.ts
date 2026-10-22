@@ -3,7 +3,8 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { safeNext } from "@/lib/safe-next";
+import { safeNext, DEFAULT_NEXT } from "@/lib/safe-next";
+import { isStaffProfile, STAFF_HOME } from "@/lib/staff-landing";
 
 /**
  * Signing in and signing up, on the server.
@@ -82,17 +83,32 @@ export async function signIn(_prev: AuthState, formData: FormData): Promise<Auth
   }
 
   const supabase = await createClient();
-  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
   if (error) {
     return { error: readableError(error.code, error.message) };
+  }
+
+  // Staff land in the console, not on the member dashboard. Sending an admin to
+  // /dashboard meant the member onboarding wall (or a second trip through the
+  // login page) stood between them and the console, so signing in seemed to
+  // need doing twice. The profile is read with this same client: a fresh client
+  // would still see the request's old, signed-out cookies.
+  let destination = next;
+  if (next === DEFAULT_NEXT && data.user) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("user_type, is_hub_admin")
+      .eq("id", data.user.id)
+      .maybeSingle();
+    if (isStaffProfile(profile)) destination = STAFF_HOME;
   }
 
   // Every layout reads the session, so the whole tree is stale now.
   revalidatePath("/", "layout");
   // redirect() signals by throwing, so it must be the last thing and must not
   // sit inside a try/catch that would swallow it.
-  redirect(next);
+  redirect(destination);
 }
 
 export async function signUp(_prev: AuthState, formData: FormData): Promise<AuthState> {

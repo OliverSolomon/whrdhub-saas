@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { safeNext } from "@/lib/safe-next";
+import { safeNext, DEFAULT_NEXT } from "@/lib/safe-next";
+import { isStaffProfile, STAFF_HOME } from "@/lib/staff-landing";
 import { sendMail } from "@/lib/email/send";
 import { welcomeHtml, welcomeText, welcomeSubject } from "@/lib/email/welcome";
 
@@ -25,7 +26,7 @@ export async function GET(request: Request) {
       if (user) {
         const { data: profile } = await supabase
           .from("profiles")
-          .select("hub_onboarded, welcomed_at, full_name")
+          .select("hub_onboarded, welcomed_at, full_name, user_type, is_hub_admin")
           .eq("id", user.id)
           .maybeSingle();
 
@@ -42,7 +43,11 @@ export async function GET(request: Request) {
           void sendWelcome(user.email, (profile.full_name as string) ?? null);
         }
 
-        const dest = profile?.hub_onboarded ? next : "/onboarding";
+        // Staff skip member onboarding and open the console by default.
+        const staff = isStaffProfile(profile);
+        const dest = staff
+          ? (next === DEFAULT_NEXT ? STAFF_HOME : next)
+          : profile?.hub_onboarded ? next : "/onboarding";
         return NextResponse.redirect(`${origin}${dest}`);
       }
     }

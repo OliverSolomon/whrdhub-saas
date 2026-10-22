@@ -1,38 +1,36 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { INCIDENT_TYPES, KENYA_COUNTIES, OTHER_COUNTRIES, countryOf } from "@/lib/reporting-options";
 
 // Africa's Talking USSD webhook. AT posts: sessionId, serviceCode, phoneNumber,
-// text (all prior inputs joined by "*"). Flow is positional on that array:
-//   0 language | 1 incident type | 2 explanation | [3 platform if online]
-//   | county | help needed | confirm
+// text (all prior inputs joined by "*"). The flow is positional on that array:
+//   0 language | 1.. incident type (may span 2 pages) | explanation
+//   | [platform if digital threats] | county or country | help needed | confirm
 // We never re-prompt on bad input (that would shift every later index in a
 // stateless webhook); instead we normalise inputs to valid values.
 
-const INCIDENT_TYPES = ["", "physical_violence", "online_harassment", "sexual_violence", "workplace_abuse", "other"];
-const HELP_TYPES = ["", "legal", "medical", "psychosocial", "shelter", ""]; // 5 = just reporting
+export const dynamic = "force-dynamic";
 
-const TYPE_LABELS: Record<"en" | "sw", string[]> = {
-  en: ["", "Physical violence", "Online harassment", "Sexual violence", "Workplace abuse", "Other"],
-  sw: ["", "Unyanyasaji wa kimwili", "Unyanyasaji mtandaoni", "Unyanyasaji wa kingono", "Unyanyasaji kazini", "Nyingine"],
-};
+// USSD screens hold ~180 characters, so the 15 incident types are shown over
+// two pages: 1-7 and "8. More", then the rest.
+const PAGE1 = 7;
+const MORE = "8";
+const DIGITAL = "digital_threats";
+
+const HELP_TYPES = ["", "legal", "medical", "psychosocial", "shelter", ""]; // 5 = just reporting
 const HELP_LABELS: Record<"en" | "sw", string[]> = {
   en: ["", "Legal", "Medical", "Counselling", "Shelter", "Just reporting"],
   sw: ["", "Kisheria", "Matibabu", "Ushauri nasaha", "Hifadhi", "Naripoti tu"],
 };
 
-const COUNTIES = [
-  "Baringo", "Bomet", "Bungoma", "Busia", "Elgeyo Marakwet", "Embu", "Garissa", "Homa Bay",
-  "Isiolo", "Kajiado", "Kakamega", "Kericho", "Kiambu", "Kilifi", "Kirinyaga", "Kisii", "Kisumu",
-  "Kitui", "Kwale", "Laikipia", "Lamu", "Machakos", "Makueni", "Mandera", "Marsabit", "Meru",
-  "Migori", "Mombasa", "Murang'a", "Nairobi", "Nakuru", "Nandi", "Narok", "Nyamira", "Nyandarua",
-  "Nyeri", "Samburu", "Siaya", "Taita Taveta", "Tana River", "Tharaka Nithi", "Trans Nzoia",
-  "Turkana", "Uasin Gishu", "Vihiga", "Wajir", "West Pokot",
-];
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z]/g, "");
-const COUNTY_LOOKUP = new Map(COUNTIES.map((c) => [norm(c), c] as const));
-// ponytail: unmatched county is stored as typed - the fact-checker corrects it,
-// cheaper than a re-prompt loop that would corrupt the positional state.
-const matchCounty = (input: string) => COUNTY_LOOKUP.get(norm(input)) ?? input.trim();
+const PLACE_LOOKUP = new Map([...KENYA_COUNTIES, ...OTHER_COUNTRIES].map((c) => [norm(c), c] as const));
+PLACE_LOOKUP.set("drc", "DRC");
+PLACE_LOOKUP.set("congo", "DRC");
+PLACE_LOOKUP.set("drcongo", "DRC");
+// An unmatched place is stored as typed - the fact-checker corrects it, cheaper
+// than a re-prompt loop that would corrupt the positional state.
+const matchPlace = (input: string) => PLACE_LOOKUP.get(norm(input)) ?? input.trim();
 
 const PLATFORMS: Record<string, string> = {
   facebook: "Facebook", "fb.com": "Facebook", "fb.watch": "Facebook",
@@ -50,14 +48,18 @@ function parsePlatform(input: string): { platform: string; link: string | null }
 }
 
 const sw = (lang: string) => lang === "2";
+const list = (from: number, to: number) =>
+  INCIDENT_TYPES.slice(from, to).map((t, i) => `${i + 1}. ${t.label}`).join("\n");
+
 const prompts = {
   lang: `CON WHRD Hub Safe Report / Ripoti Salama\n1. English\n2. Kiswahili`,
-  type: (l: string) => sw(l)
-    ? `CON Aina ya tukio?\n1. Unyanyasaji wa kimwili\n2. Unyanyasaji mtandaoni\n3. Unyanyasaji wa kingono\n4. Unyanyasaji kazini\n5. Nyingine`
-    : `CON What type of incident?\n1. Physical violence\n2. Online harassment\n3. Sexual violence\n4. Workplace abuse\n5. Other`,
+  type1: (l: string) => `CON ${sw(l) ? "Aina ya tukio?" : "What type of incident?"}\n${list(0, PAGE1)}\n${MORE}. ${sw(l) ? "Zaidi" : "More"}`,
+  type2: (l: string) => `CON ${sw(l) ? "Aina nyingine:" : "More types:"}\n${list(PAGE1, INCIDENT_TYPES.length)}`,
   explanation: (l: string) => sw(l) ? `CON Eleza kwa ufupi kilichotokea:` : `CON Briefly describe what happened:`,
   platform: (l: string) => sw(l) ? `CON Andika mtandao au bandika kiungo (mf. Facebook):` : `CON Enter the platform or paste the link (e.g. Facebook):`,
-  county: (l: string) => sw(l) ? `CON Andika jina la kaunti yako (mf. Kitui):` : `CON Type your county name (e.g. Kitui):`,
+  place: (l: string) => sw(l)
+    ? `CON Andika kaunti au nchi yako (mf. Kitui, Uganda):`
+    : `CON Type your county or country (e.g. Kitui, Uganda):`,
   help: (l: string) => sw(l)
     ? `CON Unahitaji msaada gani?\n1. Kisheria\n2. Matibabu\n3. Ushauri nasaha\n4. Hifadhi\n5. Naripoti tu`
     : `CON What support do you need?\n1. Legal\n2. Medical\n3. Counselling\n4. Shelter\n5. Just reporting`,
@@ -69,43 +71,71 @@ const prompts = {
   error: (l: string) => sw(l) ? `END Hitilafu imetokea. Jaribu tena au piga 1195.` : `END An error occurred. Please try again or call 1195.`,
 };
 
-const reply = (text: string) => new NextResponse(text, { headers: { "Content-Type": "text/plain" } });
+// Africa's Talking expects plain text starting with CON or END, nothing else.
+const reply = (text: string) => new NextResponse(text, { status: 200, headers: { "Content-Type": "text/plain; charset=utf-8" } });
+
+/** AT sends form fields; accept JSON too so a test client or a proxy that re-encodes still works. */
+async function readParams(req: NextRequest): Promise<URLSearchParams> {
+  const raw = await req.text();
+  if (req.headers.get("content-type")?.includes("application/json")) {
+    try {
+      const j = JSON.parse(raw) as Record<string, unknown>;
+      return new URLSearchParams(Object.entries(j).map(([k, v]) => [k, String(v ?? "")]));
+    } catch { /* fall through to form parsing */ }
+  }
+  return new URLSearchParams(raw);
+}
 
 export async function POST(req: NextRequest) {
-  const params = new URLSearchParams(await req.text());
+  const params = await readParams(req);
   const sessionId = params.get("sessionId") || "";
   const phoneNumber = params.get("phoneNumber") || "";
   const text = params.get("text") || "";
 
   const inputs = text ? text.split("*") : [];
-  const level = inputs.length;
   const lang = inputs[0] || "1";
-  const isOnline = inputs[1] === "2";
   const L = sw(lang) ? "sw" : "en";
 
-  // Collected answers (indices shift by 1 after the explanation when online).
-  const typeChoice = parseInt(inputs[1]) || 5;
-  const explanation = inputs[2] || "";
-  const platformRaw = isOnline ? inputs[3] || "" : "";
-  const county = matchCounty(inputs[isOnline ? 4 : 3] || "");
-  const helpChoice = parseInt(inputs[isOnline ? 5 : 4]) || 5;
-  const confirmIdx = isOnline ? 6 : 5;
+  // Incident type: "8" on the first page means "show more", which shifts every later answer by one.
+  let at = 1;
+  const wentToPage2 = inputs[at] === MORE;
+  if (wentToPage2) at++;
+  const typeInput = parseInt(inputs[at]);
+  const typeIdx = wentToPage2
+    ? PAGE1 + ((typeInput > 0 ? typeInput : INCIDENT_TYPES.length - PAGE1) - 1)
+    : (typeInput > 0 && typeInput <= PAGE1 ? typeInput : INCIDENT_TYPES.length) - 1;
+  const incident = INCIDENT_TYPES[Math.min(Math.max(typeIdx, 0), INCIDENT_TYPES.length - 1)];
+  const isOnline = incident.value === DIGITAL;
+
+  // Where each later answer sits, now that we know how many steps came before.
+  const explIdx = at + 1;
+  const platformIdx = isOnline ? explIdx + 1 : -1;
+  const placeIdx = (isOnline ? platformIdx : explIdx) + 1;
+  const helpIdx = placeIdx + 1;
+  const confirmIdx = helpIdx + 1;
+
+  const explanation = inputs[explIdx] || "";
+  const platformRaw = isOnline ? inputs[platformIdx] || "" : "";
+  const place = matchPlace(inputs[placeIdx] || "");
+  const helpChoice = parseInt(inputs[helpIdx]) || 5;
 
   const summary = [
-    TYPE_LABELS[L][typeChoice] || TYPE_LABELS[L][5],
-    county,
+    incident.label,
+    place,
     isOnline ? parsePlatform(platformRaw).platform : null,
     HELP_LABELS[L][helpChoice] || HELP_LABELS[L][5],
   ].filter(Boolean).join(" | ");
 
+  const level = inputs.length;
   try {
     if (level === 0) return reply(prompts.lang);
-    if (level === 1) return reply(prompts.type(lang));
-    if (level === 2) return reply(prompts.explanation(lang));
-    if (level === 3) return reply(isOnline ? prompts.platform(lang) : prompts.county(lang));
-    if (level === 4) return reply(isOnline ? prompts.county(lang) : prompts.help(lang));
-    if (level === 5) return reply(isOnline ? prompts.help(lang) : prompts.confirm(lang, summary));
-    if (level === 6 && isOnline) return reply(prompts.confirm(lang, summary));
+    if (level === 1) return reply(prompts.type1(lang));
+    if (level === 2 && wentToPage2) return reply(prompts.type2(lang));
+    if (level === at + 1) return reply(prompts.explanation(lang));
+    if (level === explIdx + 1) return reply(isOnline ? prompts.platform(lang) : prompts.place(lang));
+    if (isOnline && level === platformIdx + 1) return reply(prompts.place(lang));
+    if (level === placeIdx + 1) return reply(prompts.help(lang));
+    if (level === helpIdx + 1) return reply(prompts.confirm(lang, summary));
 
     if (level === confirmIdx + 1) {
       if (inputs[confirmIdx] !== "1") return reply(prompts.cancelled(lang));
@@ -113,7 +143,7 @@ export async function POST(req: NextRequest) {
       const admin = createAdminClient();
       const username = `ussd-${Math.random().toString(36).slice(2, 8)}`;
       const virtualEmail = `${username}@whrdhub.local`;
-      const password = Math.random().toString(36).slice(2, 14);
+      const password = Math.random().toString(36).slice(2, 14) + Math.random().toString(36).slice(2, 8);
 
       const { data: signupData, error: signupError } = await admin.auth.admin.createUser({
         email: virtualEmail, password, email_confirm: true,
@@ -125,19 +155,22 @@ export async function POST(req: NextRequest) {
       }
       const userId = signupData.user.id;
 
-      await admin.from("profiles").upsert(
+      const { error: profileError } = await admin.from("profiles").upsert(
         { id: userId, username, is_anonymous: true, user_type: "reporter", email: virtualEmail },
         { onConflict: "id", ignoreDuplicates: false },
       );
+      // The profile is a convenience; the report is what matters, so carry on.
+      if (profileError) console.error("USSD profile upsert error:", profileError);
 
       const { platform, link } = parsePlatform(platformRaw);
       const support = HELP_TYPES[helpChoice] ? [HELP_TYPES[helpChoice]] : [];
 
       const { data: report, error: reportError } = await admin.from("reports").insert({
         user_id: userId,
-        incident_types: [INCIDENT_TYPES[typeChoice] || "other"],
+        incident_types: [incident.value],
         description: explanation,
-        county,
+        county: place || null,
+        country: countryOf(place),
         support_needed: support,
         reporting_for: "self",
         is_ongoing: false,
@@ -156,10 +189,12 @@ export async function POST(req: NextRequest) {
         return reply(prompts.error(lang));
       }
 
-      await admin.from("ussd_sessions").insert({
+      const { error: sessionError } = await admin.from("ussd_sessions").upsert({
         session_id: sessionId, phone_number: phoneNumber, text_input: text,
         current_step: "completed", report_id: report.id,
-      });
+      }, { onConflict: "session_id" });
+      // Only the confirmation SMS depends on this row; the report is already saved.
+      if (sessionError) console.error("USSD session log error:", sessionError);
 
       // The confirmation SMS is sent by the events callback (/api/ussd/events)
       // when AT notifies us the session has ended - keeps SMS off this path.
@@ -172,4 +207,9 @@ export async function POST(req: NextRequest) {
     console.error("USSD error:", err);
     return reply(prompts.error(lang));
   }
+}
+
+/** A browser or uptime check opening the URL: answer plainly instead of a 405, so it is clear the route is live. */
+export async function GET() {
+  return reply("END WHRD Hub USSD endpoint is live.");
 }

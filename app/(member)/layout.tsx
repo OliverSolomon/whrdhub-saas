@@ -17,7 +17,9 @@ export default async function MemberLayout({ children }: { children: React.React
   // have no Hub community profile and must not be pushed through member
   // onboarding. They keep a reports-only dashboard.
   const reporterOnly = user.isReporterOnly;
-  if (!reporterOnly && !user.profile?.hub_onboarded) redirect("/onboarding");
+  // Staff are not asked to fill in the member questionnaire before they can work.
+  const isStaff = !!user.profile?.is_hub_admin || user.profile?.user_type === "admin";
+  if (!reporterOnly && !isStaff && !user.profile?.hub_onboarded) redirect("/onboarding");
 
   const supabase = await createClient();
   const [{ data: reports }, { count: notifCount }] = await Promise.all([
