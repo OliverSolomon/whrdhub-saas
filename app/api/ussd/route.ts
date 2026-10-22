@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { NextRequest, NextResponse, after } from "next/server";
 import { alertOnReport } from "@/lib/alerts";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -5,8 +6,11 @@ import { INCIDENT_TYPES, KENYA_COUNTIES, OTHER_COUNTRIES, countryOf } from "@/li
 
 // Africa's Talking USSD webhook. AT posts: sessionId, serviceCode, phoneNumber,
 // text (all prior inputs joined by "*"). The flow is positional on that array:
-//   0 language | 1.. incident type (may span 2 pages) | explanation
-//   | [platform if digital threats] | county or country | help needed | confirm
+//   0 language | 1 menu (1 new report, 2 check a report)
+//   new report:  2.. incident type (may span 2 pages) | explanation
+//                | [platform if digital threats] | county or country
+//                | help needed | PIN | confirm
+//   check:       2 PIN
 // We never re-prompt on bad input (that would shift every later index in a
 // stateless webhook); instead we normalise inputs to valid values.
 
@@ -49,11 +53,44 @@ function parsePlatform(input: string): { platform: string; link: string | null }
 }
 
 const sw = (lang: string) => lang === "2";
+
+const MAX_PIN_TRIES = 5;
+/** A short PIN is only as good as the lockout behind it; the phone number is mixed in so equal PINs differ. */
+const hashPin = (pin: string, phone: string) =>
+  createHash("sha256").update(`${pin}:${phone}:${process.env.USSD_PIN_PEPPER ?? ""}`).digest("hex");
+
+const STATUS_TEXT: Record<"en" | "sw", Record<string, string>> = {
+  en: {
+    submitted: "Received. A person will review it soon.",
+    under_review: "Being reviewed by our team.",
+    referred: "Support has been arranged. We will contact you.",
+    closed: "This report is closed.",
+    flagged: "Flagged for urgent attention.",
+  },
+  sw: {
+    submitted: "Imepokelewa. Mtu atakagua hivi karibuni.",
+    under_review: "Inakaguliwa na timu yetu.",
+    referred: "Msaada umepangwa. Tutakupigia.",
+    closed: "Ripoti hii imefungwa.",
+    flagged: "Imewekwa alama ya dharura.",
+  },
+};
 const list = (from: number, to: number) =>
   INCIDENT_TYPES.slice(from, to).map((t, i) => `${i + 1}. ${t.label}`).join("\n");
 
 const prompts = {
   lang: `CON WHRD Hub Safe Report / Ripoti Salama\n1. English\n2. Kiswahili`,
+  menu: (l: string) => sw(l)
+    ? `CON Unataka nini?\n1. Ripoti mpya\n2. Angalia ripoti yangu`
+    : `CON What would you like to do?\n1. New report\n2. Check my report`,
+  checkPin: (l: string) => sw(l) ? `CON Weka PIN yako ya tarakimu 4:` : `CON Enter your 4-digit PIN:`,
+  setPin: (l: string) => sw(l)
+    ? `CON Weka PIN ya tarakimu 4 ya kuangalia ripoti baadaye (au 0 kuruka):`
+    : `CON Set a 4-digit PIN to check your report later (or 0 to skip):`,
+  noReport: (l: string) => sw(l) ? `END Hakuna ripoti iliyo na PIN kwa nambari hii.` : `END No report with a PIN was found for this number.`,
+  wrongPin: (l: string) => sw(l) ? `END PIN si sahihi. Jaribu tena.` : `END That PIN is not right. Try again.`,
+  locked: (l: string) => sw(l) ? `END Majaribio mengi. Piga 1195 kwa msaada.` : `END Too many tries. Please call 1195 for help.`,
+  status: (l: string, ref: string, status: string) => sw(l) ? `END Ripoti ${ref}:\n${status}\nDharura: 1195.` : `END Report ${ref}:\n${status}\nImmediate help: 1195.`,
   type1: (l: string) => `CON ${sw(l) ? "Aina ya tukio?" : "What type of incident?"}\n${list(0, PAGE1)}\n${MORE}. ${sw(l) ? "Zaidi" : "More"}`,
   type2: (l: string) => `CON ${sw(l) ? "Aina nyingine:" : "More types:"}\n${list(PAGE1, INCIDENT_TYPES.length)}`,
   explanation: (l: string) => sw(l) ? `CON Eleza kwa ufupi kilichotokea:` : `CON Briefly describe what happened:`,
@@ -66,8 +103,8 @@ const prompts = {
     : `CON What support do you need?\n1. Legal\n2. Medical\n3. Counselling\n4. Shelter\n5. Just reporting`,
   confirm: (l: string, s: string) => sw(l) ? `CON Thibitisha:\n${s}\n1. Wasilisha\n2. Ghairi` : `CON Confirm:\n${s}\n1. Submit\n2. Cancel`,
   submitted: (l: string, ref: string) => sw(l)
-    ? `END Ripoti imepokelewa.\nKumb: ${ref}\nTutafuatilia. Dharura: piga 1195.`
-    : `END Report received.\nRef: ${ref}\nWe will follow up. Immediate help: call 1195.`,
+    ? `END Ripoti imepokelewa.\nKumb: ${ref}\nPiga tena, chagua 2 kuangalia. Dharura: 1195.`
+    : `END Report received.\nRef: ${ref}\nDial again and choose 2 to check it. Help: 1195.`,
   cancelled: (l: string) => sw(l) ? `END Ripoti imeghairiwa. Piga 1195 kwa msaada.` : `END Report cancelled. Call 1195 for support.`,
   error: (l: string) => sw(l) ? `END Hitilafu imetokea. Jaribu tena au piga 1195.` : `END An error occurred. Please try again or call 1195.`,
 };
@@ -87,6 +124,35 @@ async function readParams(req: NextRequest): Promise<URLSearchParams> {
   return new URLSearchParams(raw);
 }
 
+/** The status of the latest report this phone filed with the PIN given, with a lockout after too many wrong tries. */
+async function checkReport(phone: string, pin: string, lang: string): Promise<string> {
+  const admin = createAdminClient();
+  const L = sw(lang) ? "sw" : "en";
+  const { data } = await admin
+    .from("reports")
+    .select("id, status, ussd_pin_hash, ussd_pin_attempts")
+    .eq("channel", "ussd")
+    .eq("contact_value", phone)
+    .not("ussd_pin_hash", "is", null)
+    .is("deleted_at", null)
+    .order("created_at", { ascending: false })
+    .limit(5);
+  const rows = data ?? [];
+  if (rows.length === 0) return prompts.noReport(lang);
+  if (rows.some((r) => (r.ussd_pin_attempts ?? 0) >= MAX_PIN_TRIES)) return prompts.locked(lang);
+
+  const ids = rows.map((r) => r.id as string);
+  const hit = /^\d{4}$/.test(pin) ? rows.find((r) => r.ussd_pin_hash === hashPin(pin, phone)) : undefined;
+  if (!hit) {
+    const tries = Math.max(...rows.map((r) => r.ussd_pin_attempts ?? 0)) + 1;
+    await admin.from("reports").update({ ussd_pin_attempts: tries }).in("id", ids);
+    return tries >= MAX_PIN_TRIES ? prompts.locked(lang) : prompts.wrongPin(lang);
+  }
+  await admin.from("reports").update({ ussd_pin_attempts: 0 }).in("id", ids);
+  const status = STATUS_TEXT[L][(hit.status as string) ?? "submitted"] ?? STATUS_TEXT[L].submitted;
+  return prompts.status(lang, (hit.id as string).slice(0, 8).toUpperCase(), status);
+}
+
 export async function POST(req: NextRequest) {
   const params = await readParams(req);
   const sessionId = params.get("sessionId") || "";
@@ -98,7 +164,7 @@ export async function POST(req: NextRequest) {
   const L = sw(lang) ? "sw" : "en";
 
   // Incident type: "8" on the first page means "show more", which shifts every later answer by one.
-  let at = 1;
+  let at = 2;
   const wentToPage2 = inputs[at] === MORE;
   if (wentToPage2) at++;
   const typeInput = parseInt(inputs[at]);
@@ -113,12 +179,15 @@ export async function POST(req: NextRequest) {
   const platformIdx = isOnline ? explIdx + 1 : -1;
   const placeIdx = (isOnline ? platformIdx : explIdx) + 1;
   const helpIdx = placeIdx + 1;
-  const confirmIdx = helpIdx + 1;
+  const pinIdx = helpIdx + 1;
+  const confirmIdx = pinIdx + 1;
 
   const explanation = inputs[explIdx] || "";
   const platformRaw = isOnline ? inputs[platformIdx] || "" : "";
   const place = matchPlace(inputs[placeIdx] || "");
   const helpChoice = parseInt(inputs[helpIdx]) || 5;
+  // Four digits, or nothing (0 skips): a report with no PIN simply cannot be checked later.
+  const pin = /^\d{4}$/.test(inputs[pinIdx] ?? "") ? inputs[pinIdx] : "";
 
   const summary = [
     incident.label,
@@ -130,13 +199,22 @@ export async function POST(req: NextRequest) {
   const level = inputs.length;
   try {
     if (level === 0) return reply(prompts.lang);
-    if (level === 1) return reply(prompts.type1(lang));
-    if (level === 2 && wentToPage2) return reply(prompts.type2(lang));
+    if (level === 1) return reply(prompts.menu(lang));
+
+    // Check an earlier report with the PIN set when it was filed.
+    if (inputs[1] === "2") {
+      if (level === 2) return reply(prompts.checkPin(lang));
+      return reply(await checkReport(phoneNumber, inputs[2] ?? "", lang));
+    }
+
+    if (level === 2) return reply(prompts.type1(lang));
+    if (level === 3 && wentToPage2) return reply(prompts.type2(lang));
     if (level === at + 1) return reply(prompts.explanation(lang));
     if (level === explIdx + 1) return reply(isOnline ? prompts.platform(lang) : prompts.place(lang));
     if (isOnline && level === platformIdx + 1) return reply(prompts.place(lang));
     if (level === placeIdx + 1) return reply(prompts.help(lang));
-    if (level === helpIdx + 1) return reply(prompts.confirm(lang, summary));
+    if (level === helpIdx + 1) return reply(prompts.setPin(lang));
+    if (level === pinIdx + 1) return reply(prompts.confirm(lang, summary));
 
     if (level === confirmIdx + 1) {
       if (inputs[confirmIdx] !== "1") return reply(prompts.cancelled(lang));
@@ -166,7 +244,7 @@ export async function POST(req: NextRequest) {
       const { platform, link } = parsePlatform(platformRaw);
       const support = HELP_TYPES[helpChoice] ? [HELP_TYPES[helpChoice]] : [];
 
-      const { data: report, error: reportError } = await admin.from("reports").insert({
+      const row = {
         user_id: userId,
         incident_types: [incident.value],
         description: explanation,
@@ -184,7 +262,13 @@ export async function POST(req: NextRequest) {
         verification_status: "pending",
         reporter_type: "anonymous",
         channel: "ussd",
-      }).select("id").single();
+      };
+      // Stored only when a PIN was set. If the follow-up columns are not there yet, file the report without them rather than lose it.
+      const withPin = pin ? { ...row, ussd_pin_hash: hashPin(pin, phoneNumber) } : row;
+      let { data: report, error: reportError } = await admin.from("reports").insert(withPin).select("id").single();
+      if (reportError && pin && /ussd_pin/i.test(reportError.message)) {
+        ({ data: report, error: reportError } = await admin.from("reports").insert(row).select("id").single());
+      }
       if (reportError || !report) {
         console.error("USSD report insert error:", reportError);
         return reply(prompts.error(lang));
