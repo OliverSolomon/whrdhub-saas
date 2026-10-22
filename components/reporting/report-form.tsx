@@ -22,7 +22,7 @@ import { URGENCY_META } from "@/lib/urgency";
 import { VoiceInput } from "@/components/reporting/voice-input";
 import { useOnline } from "@/lib/use-online";
 import { uploadReportVoiceNote } from "@/lib/supabase/storage";
-import { attachVoiceNote } from "@/app/actions/report-update";
+import { attachVoiceNote, attachScreenshots } from "@/app/actions/report-update";
 
 // ─── dual-language label helper ──────────────────────────────────────────────
 // When isDualLang is true (EN or SW), show primary label + secondary in parentheses.
@@ -355,6 +355,13 @@ export default function ReportForm({ isAuthenticated = false, userEmail }: Repor
             email: result.virtualEmail!,
             password,
           });
+          // Anonymous reporters have no account until now, so their screenshots were never uploaded.
+          // With a session in hand, save them against the new report.
+          if (screenshotFiles.length > 0 && result.reportId) {
+            const { urls, errors } = await uploadReportScreenshots("", screenshotFiles);
+            if (urls.length) await attachScreenshots(result.reportId, urls).catch(() => undefined);
+            if (errors.length) toast.error(`${tr.uploadFailed}: ${errors[0]}`);
+          }
           // Now there is a session, the voice note can be saved against the new report.
           if (voiceBlob && result.reportId) {
             const path = await uploadReportVoiceNote(voiceBlob);

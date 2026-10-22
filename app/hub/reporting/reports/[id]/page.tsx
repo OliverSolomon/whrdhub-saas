@@ -74,6 +74,21 @@ async function ReportDetail({ id }: { id: string }) {
     for (const s of signed ?? []) if (s.signedUrl) voiceUrls.push(s.signedUrl);
   }
 
+  // Evidence files live in a private bucket; each is shown through a short-lived signed link.
+  const evidencePaths = (((report as { tfgbv_screenshot_urls?: string[] | null }).tfgbv_screenshot_urls) ?? []).slice(0, 10);
+  const evidence: { url: string; pdf: boolean }[] = [];
+  if (evidencePaths.length) {
+    const storagePaths = evidencePaths.filter((p) => !/^https?:/i.test(p));
+    const signed = storagePaths.length
+      ? (await createAdminClient().storage.from("report-screenshots").createSignedUrls(storagePaths, 3600)).data ?? []
+      : [];
+    const byPath = new Map(signed.map((s) => [s.path, s.signedUrl]));
+    for (const p of evidencePaths) {
+      const url = /^https?:/i.test(p) ? p : byPath.get(p);
+      if (url) evidence.push({ url, pdf: /\.pdf($|\?)/i.test(p) });
+    }
+  }
+
   // What category does the free-text "Other" request fit? Only when the deployment has opted in to sending report text to Jev.
   const supportSuggestion = report.support_other ? await suggestSupportCategory(report.support_other as string) : null;
 
@@ -233,6 +248,27 @@ async function ReportDetail({ id }: { id: string }) {
               <Field label="WHY - Activism Context" value={report.activism_context} />
             )}
           </div>
+
+          {evidence.length > 0 && (
+            <div className="rounded-2xl border border-line bg-surface shadow-[0_1px_2px_rgba(28,21,34,0.04)] p-6 space-y-3">
+              <h2 className="font-bold text-base">Evidence from the reporter ({evidence.length})</h2>
+              <div className="grid gap-3 sm:grid-cols-3">
+                {evidence.map((e, i) =>
+                  e.pdf ? (
+                    <a key={e.url} href={e.url} target="_blank" rel="noopener noreferrer" className="grid h-28 place-items-center rounded-xl border border-line bg-paper text-sm font-semibold text-purple hover:underline">
+                      Open PDF {i + 1}
+                    </a>
+                  ) : (
+                    <a key={e.url} href={e.url} target="_blank" rel="noopener noreferrer" className="overflow-hidden rounded-xl border border-line hover:opacity-80">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={e.url} alt={`Evidence ${i + 1}`} className="h-28 w-full object-cover" />
+                    </a>
+                  ),
+                )}
+              </div>
+              <p className="text-xs text-muted">Links expire in an hour. Only the response team can open them.</p>
+            </div>
+          )}
 
           {/* Voice note: private bucket, so each file is played through a short-lived signed link. */}
           {voiceUrls.length > 0 && (

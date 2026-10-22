@@ -121,6 +121,24 @@ export async function updateReportDetails(reportId: string, input: ReportDetails
   return { ok: true };
 }
 
+/** Attach evidence files an anonymous reporter uploaded just after their account was created. */
+export async function attachScreenshots(reportId: string, paths: string[]): Promise<Result> {
+  const own = await ownReport(reportId);
+  if (!("userId" in own)) return { error: own.error };
+  const mine = paths.filter((p) => typeof p === "string" && p.startsWith(`${own.userId}/`)).slice(0, 10);
+  if (mine.length === 0) return { error: "No files to attach." };
+
+  const admin = createAdminClient();
+  const { data: row } = await admin.from("reports").select("tfgbv_screenshot_urls").eq("id", reportId).maybeSingle();
+  const existing = ((row?.tfgbv_screenshot_urls as string[] | null) ?? []).filter(Boolean);
+  const { error } = await admin.from("reports").update({ tfgbv_screenshot_urls: [...new Set([...existing, ...mine])] }).eq("id", reportId);
+  if (error) return { error: "Could not attach the files just now." };
+  await audit(reportId, own.userId, "Attached evidence files");
+  revalidatePath(`/dashboard/reports/${reportId}`);
+  revalidatePath("/hub/reporting");
+  return { ok: true };
+}
+
 /** Attach voice notes recorded by the reporter, after the report exists. Only their own folder is accepted. */
 export async function attachVoiceNote(reportId: string, paths: string[]): Promise<Result> {
   const own = await ownReport(reportId);
