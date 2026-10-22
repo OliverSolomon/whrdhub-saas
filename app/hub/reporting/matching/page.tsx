@@ -115,10 +115,10 @@ export default async function MatchingPage() {
   const stale = overview.stale_proposals ?? 0;
 
   return (
-    <div className="space-y-6 p-4 sm:p-8">
+    <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-black text-ink">Matching</h1>
-        <p className="text-sm text-muted">
+        <h1 className="font-display text-3xl font-bold tracking-tight text-ink">Matching</h1>
+        <p className="mt-1 text-sm text-muted">
           Every referral the engine has made, what state it is in, and a run-it-yourself
           model of how the engine decides.
         </p>

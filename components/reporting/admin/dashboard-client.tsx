@@ -2,10 +2,11 @@
 
 import { useState, useMemo } from "react";
 import Link from "next/link";
-import { FileText, Clock, CheckCircle, AlertTriangle, Shield, Plus, ExternalLink, ArrowUpDown, Smartphone } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { FileText, Clock, CheckCircle, AlertTriangle, Shield, Plus, Smartphone } from "lucide-react";
+import { FilterBar } from "@/components/ui/filter-bar";
+import { ReportRow } from "@/components/reporting/report-row";
 import { incidentLabel } from "@/lib/reporting-options";
-import { URGENCY_META, URGENCY_ORDER, urgencyMeta, urgencyHexByLabel, type Urgency } from "@/lib/urgency";
+import { URGENCY_META, URGENCY_ORDER, urgencyHexByLabel, type Urgency } from "@/lib/urgency";
 import { Button } from "@/components/ui/button";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -25,10 +26,6 @@ export interface Report {
   perpetrator_type?: string | null;
   channel?: string | null;
 }
-
-const CHANNEL_BADGE: Record<string, "secondary" | "info" | "success" | "warning"> = {
-  web: "secondary", ussd: "warning", api: "info", mobile: "success",
-};
 
 const PURPLE = "#734e9e";
 const GOLD = "#ce2087";
@@ -55,12 +52,6 @@ function StatCard({
   );
 }
 
-const STATUS_BADGE: Record<string, "secondary" | "info" | "success" | "warning" | "destructive"> = {
-  submitted: "secondary", under_review: "info", referred: "success", closed: "secondary", flagged: "destructive",
-};
-const VERIF_BADGE: Record<string, "info" | "success" | "destructive" | "warning" | "secondary"> = {
-  pending: "info", verified: "success", unverified: "destructive", needs_more_info: "warning",
-};
 
 export function AdminDashboardClient({ reports }: { reports: Report[] }) {
   const [countyFilter, setCountyFilter] = useState("");
@@ -123,11 +114,6 @@ export function AdminDashboardClient({ reports }: { reports: Report[] }) {
 
   const uniqueCounties = [...new Set(reports.map(r => r.county).filter(Boolean))].sort() as string[];
 
-  const toggleSort = (field: "created_at" | "urgency") => {
-    if (sortField === field) setSortDir(d => d === "asc" ? "desc" : "asc");
-    else { setSortField(field); setSortDir("desc"); }
-  };
-
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -152,47 +138,23 @@ export function AdminDashboardClient({ reports }: { reports: Report[] }) {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-wrap items-end gap-3 rounded-2xl border border-line bg-surface p-4 shadow-[0_1px_2px_rgba(28,21,34,0.04)]">
-        <div>
-          <label className="mb-1 block text-xs font-semibold text-muted">County</label>
-          <select value={countyFilter} onChange={e => setCountyFilter(e.target.value)} className="h-10 rounded-xl border border-line bg-surface px-3 text-sm text-ink focus:border-purple/40 focus:outline-none focus:ring-2 focus:ring-purple/30">
-            <option value="">All counties</option>
-            {uniqueCounties.map(c => <option key={c} value={c}>{c}</option>)}
+      <FilterBar
+        filters={[
+          { key: "county", label: "County", options: uniqueCounties.map((c) => ({ value: c, label: c })) },
+          { key: "urgency", label: "Urgency", options: [{ value: "immediate", label: "Immediate" }, { value: "within_week", label: "Within a week" }, { value: "no_rush", label: "No rush" }] },
+          { key: "verif", label: "Fact-check", options: [{ value: "pending", label: "Pending" }, { value: "verified", label: "Verified" }, { value: "unverified", label: "Could not verify" }, { value: "needs_more_info", label: "Needs more info" }] },
+          { key: "channel", label: "Channel", options: [{ value: "web", label: "Web" }, { value: "ussd", label: "USSD" }, { value: "mobile", label: "Mobile" }, { value: "api", label: "API" }] },
+        ]}
+        values={{ county: countyFilter, urgency: urgencyFilter, verif: verifFilter, channel: channelFilter }}
+        onChange={(key, value) => ({ county: setCountyFilter, urgency: setUrgencyFilter, verif: setVerifFilter, channel: setChannelFilter } as Record<string, (v: string) => void>)[key]?.(value)}
+        onClear={() => { setCountyFilter(""); setUrgencyFilter(""); setVerifFilter(""); setChannelFilter(""); }}
+        trailing={
+          <select value={sortField} onChange={(e) => { setSortField(e.target.value as "created_at" | "urgency"); setSortDir("desc"); }} aria-label="Sort" className="ml-auto h-9 rounded-full border border-line bg-surface px-3 text-[13px] font-medium text-muted">
+            <option value="created_at">Newest first</option>
+            <option value="urgency">Most urgent first</option>
           </select>
-        </div>
-        <div>
-          <label className="mb-1 block text-xs font-semibold text-muted">Urgency</label>
-          <select value={urgencyFilter} onChange={e => setUrgencyFilter(e.target.value)} className="h-10 rounded-xl border border-line bg-surface px-3 text-sm text-ink focus:border-purple/40 focus:outline-none focus:ring-2 focus:ring-purple/30">
-            <option value="">All</option>
-            <option value="immediate">Immediate</option>
-            <option value="within_week">Within Week</option>
-            <option value="no_rush">No Rush</option>
-          </select>
-        </div>
-        <div>
-          <label className="mb-1 block text-xs font-semibold text-muted">Fact-Check</label>
-          <select value={verifFilter} onChange={e => setVerifFilter(e.target.value)} className="h-10 rounded-xl border border-line bg-surface px-3 text-sm text-ink focus:border-purple/40 focus:outline-none focus:ring-2 focus:ring-purple/30">
-            <option value="">All</option>
-            <option value="pending">Pending</option>
-            <option value="verified">Verified</option>
-            <option value="unverified">Unverified</option>
-            <option value="needs_more_info">Needs More Info</option>
-          </select>
-        </div>
-        <div>
-          <label className="mb-1 block text-xs font-semibold text-muted">Channel</label>
-          <select value={channelFilter} onChange={e => setChannelFilter(e.target.value)} className="h-10 rounded-xl border border-line bg-surface px-3 text-sm text-ink focus:border-purple/40 focus:outline-none focus:ring-2 focus:ring-purple/30">
-            <option value="">All channels</option>
-            <option value="web">Web</option>
-            <option value="ussd">USSD</option>
-            <option value="mobile">Mobile</option>
-            <option value="api">API</option>
-          </select>
-        </div>
-        <Button variant="ghost" size="sm" onClick={() => { setCountyFilter(""); setUrgencyFilter(""); setVerifFilter(""); setChannelFilter(""); }}>
-          Clear filters
-        </Button>
-      </div>
+        }
+      />
 
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
@@ -274,85 +236,27 @@ export function AdminDashboardClient({ reports }: { reports: Report[] }) {
         </div>
       </div>
 
-      {/* Reports table */}
-      <div>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-black text-ink">All Reports</h2>
-          <Button variant="outline" size="sm" asChild>
-            <Link href="/hub/reporting/reports"><ExternalLink className="w-3.5 h-3.5 mr-1.5" />Full report list</Link>
-          </Button>
+      {/* Recent reports */}
+      <section>
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="font-display text-lg font-bold tracking-tight text-ink">Recent reports</h2>
+          <Link href="/hub/reporting/reports" className="text-sm font-semibold text-purple hover:underline">Open the full list →</Link>
         </div>
-        <div className="bg-surface rounded-2xl border border-line overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-line bg-paper">
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted">Date</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted">Incident</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted">County</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted">
-                    <button onClick={() => toggleSort("urgency")} className="flex items-center gap-1 hover:text-ink">
-                      Urgency <ArrowUpDown className="w-3 h-3" />
-                    </button>
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted">Status</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted">Fact-Check</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted">Channel</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted">Reporter</th>
-                  <th className="text-right px-4 py-3" />
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-line">
-                {filtered.length === 0 ? (
-                  <tr><td colSpan={9} className="text-center py-12 text-muted">No reports match current filters</td></tr>
-                ) : filtered.slice(0, 20).map(r => (
-                  <tr key={r.id} className="transition-colors hover:bg-paper">
-                    <td className="px-4 py-3 text-xs text-muted whitespace-nowrap">
-                      {new Date(r.created_at).toLocaleDateString("en-KE", { day: "numeric", month: "short", year: "numeric" })}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex flex-wrap gap-1">
-                        {(r.incident_types || []).slice(0, 2).map(t => (
-                          <span key={t} className="text-xs bg-paper px-1.5 py-0.5 rounded text-muted">{incidentLabel(t)}</span>
-                        ))}
-                        {(r.incident_types || []).length > 2 && <span className="text-xs text-muted">+{(r.incident_types || []).length - 2}</span>}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-muted">{r.county || "-"}</td>
-                    <td className="px-4 py-3">
-                      <Badge variant={urgencyMeta(r.urgency).badge}>{urgencyMeta(r.urgency).label}</Badge>
-                    </td>
-                    <td className="px-4 py-3">
-                      <Badge variant={STATUS_BADGE[r.status] || "secondary"}>{r.status?.replace(/_/g, " ")}</Badge>
-                    </td>
-                    <td className="px-4 py-3">
-                      <Badge variant={VERIF_BADGE[r.verification_status] || "secondary"}>{r.verification_status?.replace(/_/g, " ")}</Badge>
-                    </td>
-                    <td className="px-4 py-3">
-                      <Badge variant={CHANNEL_BADGE[r.channel ?? "web"] || "secondary"} className="uppercase">{r.channel ?? "web"}</Badge>
-                    </td>
-                    <td className="px-4 py-3">
-                      <Badge variant={r.reporter_type === "anonymous" ? "outline" : "info"}>{r.reporter_type}</Badge>
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <Button variant="ghost" size="sm" asChild>
-                        <Link href={`/hub/reporting/reports/${r.id}`}><ExternalLink className="w-3.5 h-3.5" /></Link>
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {filtered.length > 20 && (
-            <div className="px-4 py-3 border-t border-line text-center">
-              <Button variant="ghost" size="sm" asChild>
-                <Link href="/hub/reporting/reports">View all {filtered.length} reports →</Link>
-              </Button>
+        <div className="overflow-hidden rounded-2xl border border-line bg-surface shadow-[0_1px_2px_rgba(28,21,34,0.04)]">
+          {filtered.length === 0 ? (
+            <p className="px-6 py-14 text-center text-sm text-muted">No reports match these filters.</p>
+          ) : (
+            <ul className="divide-y divide-line">
+              {filtered.slice(0, 12).map((r) => <li key={r.id}><ReportRow r={r} /></li>)}
+            </ul>
+          )}
+          {filtered.length > 12 && (
+            <div className="border-t border-line px-4 py-2.5 text-center">
+              <Link href="/hub/reporting/reports" className="text-xs font-semibold text-purple hover:underline">View all {filtered.length} reports →</Link>
             </div>
           )}
         </div>
-      </div>
+      </section>
     </div>
   );
 }
