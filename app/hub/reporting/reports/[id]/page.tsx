@@ -8,6 +8,8 @@ import { FactCheckForm } from "@/components/reporting/admin/fact-check-form";
 import { AssignServiceForm } from "@/components/reporting/admin/assign-service-form";
 import { ReportDelete } from "@/components/reporting/admin/report-delete";
 import { getReportingAccess } from "@/lib/reporting-access";
+import { incidentLabel, riskLabel, supportLabel } from "@/lib/reporting-options";
+import { urgencyMeta } from "@/lib/urgency";
 
 const VERIFICATION_META: Record<string, { label: string; icon: React.ReactNode; variant: "info" | "success" | "destructive" | "warning" }> = {
   pending:         { label: "Pending Fact-Check", icon: <HelpCircle className="w-4 h-4" />, variant: "info" },
@@ -87,8 +89,7 @@ async function ReportDetail({ id }: { id: string }) {
     shelter: ["shelter"],
     digital_security: ["digital_security"],
     financial: ["financial"],
-    referral: ["referral"],
-    other: ["referral", "other"],
+    other: ["other"],
   };
 
   const supportNeeded = (report.support_needed as string[]) ?? [];
@@ -117,7 +118,7 @@ async function ReportDetail({ id }: { id: string }) {
             {vm.icon} {vm.label}
           </Badge>
           <Badge variant="secondary">{report.status?.replace(/_/g, " ")}</Badge>
-          {report.urgency === "immediate" && <Badge variant="destructive">IMMEDIATE URGENCY</Badge>}
+          <Badge variant={urgencyMeta(report.urgency).badge}>{urgencyMeta(report.urgency).label} urgency</Badge>
           {canAdminister && <ReportDelete reportId={report.id as string} />}
         </div>
       </div>
@@ -144,7 +145,7 @@ async function ReportDetail({ id }: { id: string }) {
               <p className="text-xs font-semibold text-muted uppercase mb-1.5">WHAT - Incident Types</p>
               <div className="flex flex-wrap gap-1.5">
                 {(report.incident_types as string[]).map(t => (
-                  <Badge key={t} variant="outline">{t.replace(/_/g, " ")}</Badge>
+                  <Badge key={t} variant="outline">{incidentLabel(t)}</Badge>
                 ))}
               </div>
             </div>
@@ -215,8 +216,22 @@ async function ReportDetail({ id }: { id: string }) {
           <div className="rounded-2xl border border-line bg-surface shadow-[0_1px_2px_rgba(28,21,34,0.04)] p-6 space-y-3">
             <h2 className="font-bold text-base">Support Requested</h2>
             <div className="flex flex-wrap gap-1.5">
-              {(report.support_needed as string[]).map(s => <Badge key={s} variant="secondary">{s.replace(/_/g, " ")}</Badge>)}
+              {((report.support_needed as string[]) ?? []).map(s => <Badge key={s} variant="secondary">{supportLabel(s)}</Badge>)}
             </div>
+            {report.support_other && (
+              <div className="text-sm bg-paper border border-line rounded-lg p-3">
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted mb-1">Other support, in their words</p>
+                <p className="whitespace-pre-line text-ink">{report.support_other as string}</p>
+              </div>
+            )}
+            {((report.risks as string[]) ?? []).length > 0 && (
+              <div className="space-y-1.5">
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted">Risks associated with this report</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {(report.risks as string[]).map(rk => <Badge key={rk} variant="warning">{riskLabel(rk)}</Badge>)}
+                </div>
+              </div>
+            )}
             {report.consent_to_followup && (
               <div className="text-sm bg-green-50 border border-green-200 rounded-lg p-3">
                 <p className="font-semibold text-green-800 mb-1">Consented to follow-up</p>

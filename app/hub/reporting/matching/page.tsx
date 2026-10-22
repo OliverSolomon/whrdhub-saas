@@ -4,6 +4,7 @@ import { Pill } from "@/components/ui/pill";
 import { MatchSimulation } from "@/components/reporting/matching/match-simulation";
 import { matchMeta, summariseReport, type Tone } from "@/lib/match-state";
 import { AlertTriangle, ArrowRight } from "lucide-react";
+import { urgencyMeta } from "@/lib/urgency";
 
 export const metadata = { title: "Matching — WHRD Hub" };
 export const dynamic = "force-dynamic";
@@ -189,7 +190,7 @@ export default async function MatchingPage() {
                       "Report"}
                   </span>
                   <span className="text-xs text-muted">{c.report.county || "county not given"}</span>
-                  {c.report.urgency === "immediate" && <Pill tone="red">immediate</Pill>}
+                  {c.report.urgency && <Pill tone={urgencyMeta(c.report.urgency).tone}>{urgencyMeta(c.report.urgency).label}</Pill>}
                   <span className="text-xs text-muted">filed {day(c.report.created_at)}</span>
                   <Link
                     href={`/hub/reporting/reports/${c.id}`}

@@ -4,6 +4,8 @@ import { useState, useMemo } from "react";
 import Link from "next/link";
 import { FileText, Clock, CheckCircle, AlertTriangle, Shield, Plus, ExternalLink, ArrowUpDown, Smartphone } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { incidentLabel } from "@/lib/reporting-options";
+import { URGENCY_META, URGENCY_ORDER, urgencyMeta, urgencyHexByLabel, type Urgency } from "@/lib/urgency";
 import { Button } from "@/components/ui/button";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -34,8 +36,6 @@ const PURPLE = "#734e9e";
 const GOLD = "#ce2087";
 const COLORS = [PURPLE, GOLD, "#10b981", "#3b82f6", "#f43f5e", "#8b5cf6", "#f97316", "#06b6d4"];
 
-const URGENCY_ORDER = ["immediate", "within_week", "no_rush"];
-const URGENCY_LABELS: Record<string, string> = { immediate: "Immediate", within_week: "Within Week", no_rush: "No Rush" };
 
 /**
  * The Hub's stat tile: a pastel surface with a white icon chip, matching the
@@ -60,9 +60,6 @@ function StatCard({
 const STATUS_BADGE: Record<string, "secondary" | "info" | "success" | "warning" | "destructive"> = {
   submitted: "secondary", under_review: "info", referred: "success", closed: "secondary", flagged: "destructive",
 };
-const URGENCY_BADGE: Record<string, "destructive" | "warning" | "secondary"> = {
-  immediate: "destructive", within_week: "warning", no_rush: "secondary",
-};
 const VERIF_BADGE: Record<string, "info" | "success" | "destructive" | "warning" | "secondary"> = {
   pending: "info", verified: "success", unverified: "destructive", needs_more_info: "warning",
 };
@@ -84,7 +81,7 @@ export function AdminDashboardClient({ reports }: { reports: Report[] }) {
     f.sort((a, b) => {
       let cmp = 0;
       if (sortField === "created_at") cmp = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
-      if (sortField === "urgency") cmp = URGENCY_ORDER.indexOf(a.urgency) - URGENCY_ORDER.indexOf(b.urgency);
+      if (sortField === "urgency") cmp = URGENCY_ORDER.indexOf(a.urgency as Urgency) - URGENCY_ORDER.indexOf(b.urgency as Urgency);
       return sortDir === "asc" ? cmp : -cmp;
     });
     return f;
@@ -100,13 +97,13 @@ export function AdminDashboardClient({ reports }: { reports: Report[] }) {
 
   const incidentCounts: Record<string, number> = {};
   filtered.forEach(r => (r.incident_types || []).forEach(t => incidentCounts[t] = (incidentCounts[t] || 0) + 1));
-  const incidentBreakdown = Object.entries(incidentCounts).map(([k, v]) => ({ name: k.replace(/_/g, " "), count: v })).sort((a, b) => b.count - a.count).slice(0, 10);
+  const incidentBreakdown = Object.entries(incidentCounts).map(([k, v]) => ({ name: incidentLabel(k), count: v })).sort((a, b) => b.count - a.count).slice(0, 10);
 
   const countyCounts: Record<string, number> = {};
   filtered.forEach(r => { if (r.county) countyCounts[r.county] = (countyCounts[r.county] || 0) + 1; });
   const countyBreakdown = Object.entries(countyCounts).map(([k, v]) => ({ name: k, count: v })).sort((a, b) => b.count - a.count);
 
-  const urgencyBreakdown = URGENCY_ORDER.map(u => ({ name: URGENCY_LABELS[u] || u, count: filtered.filter(r => r.urgency === u).length }));
+  const urgencyBreakdown = URGENCY_ORDER.map(u => ({ name: URGENCY_META[u].label, count: filtered.filter(r => r.urgency === u).length }));
   const verificationBreakdown = [
     { name: "Pending", count: filtered.filter(r => r.verification_status === "pending").length },
     { name: "Verified", count: filtered.filter(r => r.verification_status === "verified").length },
@@ -259,7 +256,7 @@ export function AdminDashboardClient({ reports }: { reports: Report[] }) {
               <Tooltip />
               <Bar dataKey="count" radius={[4, 4, 0, 0]}>
                 {urgencyBreakdown.map((entry, i) => (
-                  <Cell key={i} fill={entry.name === "Immediate" ? "#ef4444" : entry.name === "Within Week" ? GOLD : "#10b981"} />
+                  <Cell key={i} fill={urgencyHexByLabel(entry.name)} />
                 ))}
               </Bar>
             </BarChart>
@@ -318,14 +315,14 @@ export function AdminDashboardClient({ reports }: { reports: Report[] }) {
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-1">
                         {(r.incident_types || []).slice(0, 2).map(t => (
-                          <span key={t} className="text-xs bg-paper px-1.5 py-0.5 rounded text-muted capitalize">{t.replace(/_/g, " ")}</span>
+                          <span key={t} className="text-xs bg-paper px-1.5 py-0.5 rounded text-muted">{incidentLabel(t)}</span>
                         ))}
                         {(r.incident_types || []).length > 2 && <span className="text-xs text-muted">+{(r.incident_types || []).length - 2}</span>}
                       </div>
                     </td>
                     <td className="px-4 py-3 text-sm text-muted">{r.county || "-"}</td>
                     <td className="px-4 py-3">
-                      <Badge variant={URGENCY_BADGE[r.urgency] || "secondary"}>{r.urgency?.replace(/_/g, " ")}</Badge>
+                      <Badge variant={urgencyMeta(r.urgency).badge}>{urgencyMeta(r.urgency).label}</Badge>
                     </td>
                     <td className="px-4 py-3">
                       <Badge variant={STATUS_BADGE[r.status] || "secondary"}>{r.status?.replace(/_/g, " ")}</Badge>

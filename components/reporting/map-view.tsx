@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ExternalLink, MapPin } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { loadLeaflet } from "@/lib/leaflet";
+import { URGENCY_META, urgencyMeta } from "@/lib/urgency";
 
 interface Report {
   id: string;
@@ -18,11 +19,9 @@ interface Report {
   created_at: string | null;
 }
 
-const URGENCY_COLORS: Record<string, string> = {
-  immediate: "#ef4444",
-  within_week: "#f59e0b",
-  no_rush: "#10b981",
-};
+const URGENCY_COLORS: Record<string, string> = Object.fromEntries(
+  Object.entries(URGENCY_META).map(([k, v]) => [k, v.hex]),
+);
 
 export function MapView({ reports }: { reports: Report[] }) {
   const mapRef = useRef<HTMLDivElement>(null);
@@ -139,8 +138,8 @@ export function MapView({ reports }: { reports: Report[] }) {
                   <span>{new Date(r.created_at!).toLocaleDateString()}</span>
                 </div>
                 <div className="flex items-center gap-2 mt-1.5">
-                  <Badge variant={(r.urgency && URGENCY_COLORS[r.urgency]) === "#ef4444" ? "destructive" : "secondary"} className="text-[10px] px-1.5 py-0">
-                    {r.urgency?.replace(/_/g, " ")}
+                  <Badge variant={urgencyMeta(r.urgency).badge} className="text-[10px] px-1.5 py-0">
+                    {urgencyMeta(r.urgency).label}
                   </Badge>
                   <Link
                     href={`/hub/reporting/reports/${r.id}`}

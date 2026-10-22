@@ -7,12 +7,11 @@ import { ChevronLeft, ChevronRight, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Pill } from "@/components/ui/pill";
 import { summariseReport } from "@/lib/match-state";
+import { incidentLabel } from "@/lib/reporting-options";
+import { urgencyMeta } from "@/lib/urgency";
 
 const PAGE_SIZE = 15;
 
-const URGENCY_BADGE: Record<string, "destructive" | "warning" | "secondary"> = {
-  immediate: "destructive", within_week: "warning", no_rush: "secondary",
-};
 const VERIFICATION_BADGE: Record<string, "info" | "success" | "destructive" | "warning" | "secondary"> = {
   pending: "info", verified: "success", unverified: "destructive", needs_more_info: "warning",
 };
@@ -119,7 +118,7 @@ async function ReportsTable({ page, county, urgency, verif, reporter, channel, m
                 <TableCell>
                   <div className="flex flex-wrap gap-1">
                     {(r.incident_types as string[]).slice(0, 2).map(t => (
-                      <span key={t} className="text-xs bg-paper px-1.5 py-0.5 rounded text-muted">{t.replace(/_/g, " ")}</span>
+                      <span key={t} className="text-xs bg-paper px-1.5 py-0.5 rounded text-muted">{incidentLabel(t)}</span>
                     ))}
                     {(r.incident_types as string[]).length > 2 && <span className="text-xs text-muted">+{(r.incident_types as string[]).length - 2}</span>}
                   </div>
@@ -127,8 +126,8 @@ async function ReportsTable({ page, county, urgency, verif, reporter, channel, m
                 <TableCell className="text-sm">{r.county || "-"}</TableCell>
                 <TableCell className="text-xs text-muted">{r.perpetrator_type?.replace(/_/g, " ") || "-"}</TableCell>
                 <TableCell>
-                  <Badge variant={(r.urgency && URGENCY_BADGE[r.urgency]) || "secondary"}>
-                    {r.urgency?.replace(/_/g, " ")}
+                  <Badge variant={urgencyMeta(r.urgency).badge}>
+                    {urgencyMeta(r.urgency).label}
                   </Badge>
                 </TableCell>
                 <TableCell>
