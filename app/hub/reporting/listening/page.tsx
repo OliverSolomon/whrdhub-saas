@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
+import { ListeningView } from "@/components/reporting/listening/listening-view";
+import type { Keyword, Result } from "@/components/reporting/listening/types";
 import type { Source } from "@/lib/listening-sources";
-import { ListeningView, type Keyword, type Result } from "@/components/reporting/listening/listening-view";
 
 export const metadata = { title: "Online Listening - WHRD Hub" };
 
@@ -9,27 +10,29 @@ export default async function ListeningPage() {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = createAdminClient() as any;
+
+  // Columns added by later migrations are tried first and dropped if the database does not have them yet.
   const base = "id, source, permalink, author, content, matched_keywords, severity, status, captured_at";
-  const [{ data: keywords }, withAi] = await Promise.all([
+  const attempts = [`${base}, ai_class, ai_confidence, handled_by, handled_at`, `${base}, ai_class, ai_confidence`, base];
+  let rows: Record<string, unknown>[] = [];
+  for (const cols of attempts) {
+    const { data, error } = await db.from("listening_results").select(cols).order("captured_at", { ascending: false }).limit(300);
+    if (!error) { rows = data ?? []; break; }
+  }
+
+  const ids = [...new Set(rows.map((r) => r.handled_by as string | null).filter(Boolean))] as string[];
+  const names = new Map<string, string>();
+  if (ids.length) {
+    const { data: people } = await db.from("profiles").select("id, full_name, username").in("id", ids);
+    for (const p of (people ?? []) as { id: string; full_name: string | null; username: string | null }[]) names.set(p.id, p.full_name || p.username || "a colleague");
+  }
+  const results: Result[] = rows.map((r) => ({ ...(r as unknown as Result), handled_by_name: r.handled_by ? names.get(r.handled_by as string) ?? "a colleague" : null }));
+
+  const [{ data: keywords }, { data: sources }] = await Promise.all([
     db.from("listening_keywords").select("id, word, severity, active").order("word"),
-    db.from("listening_results").select(`${base}, ai_class, ai_confidence`).order("captured_at", { ascending: false }).limit(150),
+    // Until migration 018 is applied the table does not exist; show none rather than fail.
+    db.from("listening_sources").select("id, platform, kind, handle, note, active, last_scanned_at, last_result").order("created_at", { ascending: false }),
   ]);
-  // Until migration 017 is applied the ai_* columns do not exist; show the captures without them.
-  const results = withAi.error
-    ? (await db.from("listening_results").select(base).order("captured_at", { ascending: false }).limit(150)).data
-    : withAi.data;
 
-  // Until migration 018 is applied the table does not exist; show none rather than fail.
-  const { data: sources } = await db
-    .from("listening_sources")
-    .select("id, platform, kind, handle, note, active, last_scanned_at, last_result")
-    .order("created_at", { ascending: false });
-
-  return (
-    <ListeningView
-      sources={(sources ?? []) as Source[]}
-      keywords={(keywords ?? []) as Keyword[]}
-      results={(results ?? []) as Result[]}
-    />
-  );
+  return <ListeningView sources={(sources ?? []) as Source[]} keywords={(keywords ?? []) as Keyword[]} results={results} />;
 }

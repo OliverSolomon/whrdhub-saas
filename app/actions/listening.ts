@@ -45,9 +45,15 @@ export async function removeKeyword(id: string) {
 }
 
 export async function setResultStatus(id: string, status: string) {
-  if (!(await requireAdmin())) return { error: "Admins only." };
-  const { error } = await db().from("listening_results").update({ status }).eq("id", id);
-  if (error) return { error: error.message };
+  const adminId = await requireAdmin();
+  if (!adminId) return { error: "Admins only." };
+  if (!["new", "reviewing", "actioned", "dismissed"].includes(status)) return { error: "Unknown status." };
+  // Remember who handled it, so colleagues sharing the inbox do not duplicate the work.
+  const handled = status === "new" ? { handled_by: null, handled_at: null } : { handled_by: adminId, handled_at: new Date().toISOString() };
+  let { error } = await db().from("listening_results").update({ status, ...handled }).eq("id", id);
+  // Before migration 019 the columns do not exist: still save the status.
+  if (error && /handled_/i.test(error.message)) ({ error } = await db().from("listening_results").update({ status }).eq("id", id));
+  if (error) return { error: "Could not save that just now." };
   revalidatePath("/hub/reporting/listening");
   return { ok: true };
 }
