@@ -204,7 +204,7 @@ export const translations = {
         password: "Password must be at least 8 characters.",
         descriptionMin: (n: number) => `Please describe what happened (${n}/20 minimum characters).`,
       },
-      gps: "GPS noted for anonymised map visualisation only.",
+      gps: "Your location is noted. It is only ever shown to the response team as a wide area on a map, never an exact point.",
       maxFiles: "Maximum 10 files",
       uploadFailed: "Some files failed to upload",
     },

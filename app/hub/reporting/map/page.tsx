@@ -2,7 +2,8 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { ArrowLeft, MapPin } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import { MapView } from "@/components/reporting/map-view";
+import { MapView, type MapReport } from "@/components/reporting/map-view";
+import { generaliseArea } from "@/lib/geo-privacy";
 
 export const metadata = { title: "Incident map — WHRD Hub" };
 
@@ -13,11 +14,24 @@ async function MapData() {
     .select(
       "id, latitude, longitude, incident_types, county, urgency, reporter_type, verification_status, created_at",
     )
-    .not("latitude", "is", null)
-    .not("longitude", "is", null)
-    .is("deleted_at", null);
+    .is("deleted_at", null)
+    .order("created_at", { ascending: false })
+    .limit(2000);
 
-  return <MapView reports={reports ?? []} />;
+  // The exact point stays in the database. Only a wide area leaves the server,
+  // so no coordinates ever reach the browser.
+  const safe: MapReport[] = (reports ?? []).map((r) => ({
+    id: r.id as string,
+    area: generaliseArea(r.latitude as number | null, r.longitude as number | null),
+    incident_types: r.incident_types as string[] | null,
+    county: r.county as string | null,
+    urgency: r.urgency as string | null,
+    reporter_type: r.reporter_type as string | null,
+    verification_status: r.verification_status as string | null,
+    created_at: r.created_at as string | null,
+  }));
+
+  return <MapView reports={safe} />;
 }
 
 export default function MapPage() {
@@ -34,7 +48,7 @@ export default function MapPage() {
           <MapPin className="h-6 w-6 text-purple" /> Incident map
         </h1>
         <p className="mt-1 text-sm text-muted">
-          Reports carrying GPS coordinates. Locations are shown without reporter identity.
+          Darker counties have more cases. Each circle is a wide approximate area, never an exact location, and carries no reporter identity.
         </p>
       </div>
 

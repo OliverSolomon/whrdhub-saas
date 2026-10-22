@@ -10,6 +10,7 @@ import { ReportDelete } from "@/components/reporting/admin/report-delete";
 import { getReportingAccess } from "@/lib/reporting-access";
 import { incidentLabel, riskLabel, supportLabel } from "@/lib/reporting-options";
 import { urgencyMeta } from "@/lib/urgency";
+import { generaliseArea } from "@/lib/geo-privacy";
 
 const VERIFICATION_META: Record<string, { label: string; icon: React.ReactNode; variant: "info" | "success" | "destructive" | "warning" }> = {
   pending:         { label: "Pending Fact-Check", icon: <HelpCircle className="w-4 h-4" />, variant: "info" },
@@ -179,12 +180,16 @@ async function ReportDetail({ id }: { id: string }) {
                 <p className="text-xs font-semibold text-muted uppercase mb-1.5 flex items-center gap-1"><MapPin className="w-3.5 h-3.5" />WHERE</p>
                 <p className="text-sm">{report.county || "-"}</p>
                 {report.location_description && <p className="text-xs text-muted">{report.location_description}</p>}
-                {report.latitude && (
-                  <a href={`https://maps.google.com/?q=${report.latitude},${report.longitude}`} target="_blank" rel="noopener noreferrer"
-                    className="text-xs text-purple hover:underline mt-1 flex items-center gap-1">
-                    <MapPin className="w-3 h-3" />{report.latitude.toFixed(5)}, {report.longitude?.toFixed(5)} ↗
-                  </a>
-                )}
+                {(() => {
+                  // The exact point is stored but never shown: a general area is enough to place the report.
+                  const area = generaliseArea(report.latitude, report.longitude);
+                  return area ? (
+                    <a href={`https://www.openstreetmap.org/?mlat=${area.lat}&mlon=${area.lng}#map=10/${area.lat}/${area.lng}`} target="_blank" rel="noopener noreferrer"
+                      className="text-xs text-purple hover:underline mt-1 flex items-center gap-1">
+                      <MapPin className="w-3 h-3" />Approximate area (about 10 km wide) ↗
+                    </a>
+                  ) : null;
+                })()}
               </div>
             </div>
 

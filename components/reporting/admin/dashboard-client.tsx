@@ -21,8 +21,6 @@ export interface Report {
   reporter_type: string;
   county?: string | null;
   created_at: string;
-  latitude?: number | null;
-  longitude?: number | null;
   description?: string | null;
   perpetrator_type?: string | null;
   channel?: string | null;
