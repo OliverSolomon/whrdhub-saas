@@ -1,6 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { decideChoice } from "@/lib/decide";
-import { INCIDENT_TYPES, KENYA_COUNTIES, OTHER_COUNTRIES } from "@/lib/reporting-options";
+import { KENYA_COUNTIES, OTHER_COUNTRIES } from "@/lib/reporting-options";
 
 /**
  * From a capture to a case. An administrator who takes on something found by
@@ -41,7 +41,11 @@ async function incidentTypesFor(text: string, cls: string | null): Promise<strin
   if (cls === "targeted_abuse") return ["digital_threats"];
   const lower = text.toLowerCase();
   if (/\bfemicide\b/.test(lower)) return ["femicide"];
-  const r = await decideChoice(`A public social media post:\n${text.slice(0, 1500)}`, "Which kind of incident does this post describe? Choose the closest.", TYPE_HINTS);
+  // Taking on has to feel instant, so the guess gets a couple of seconds at most; the case can be re-typed later.
+  const r = await Promise.race([
+    decideChoice(`A public social media post:\n${text.slice(0, 1500)}`, "Which kind of incident does this post describe? Choose the closest.", TYPE_HINTS),
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), 2500)),
+  ]);
   if (r && r.probability >= 0.4) return [r.choice];
   return ["gbv"];
 }

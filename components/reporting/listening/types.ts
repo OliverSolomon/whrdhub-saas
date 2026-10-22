@@ -19,6 +19,19 @@ export interface Result {
   report_id?: string | null;
 }
 
+/** One page of the inbox, as the server filtered it, with the counts that go with it. */
+export interface InboxData {
+  results: Result[];
+  total: number;
+  page: number;
+  pageSize: number;
+  status: string;
+  /** Captures in each status, ignoring the other filters. */
+  counts: Record<string, number>;
+  /** New captures that look like real cases. */
+  likelyNew: number;
+}
+
 export type ActionResult =
   | { error?: string; ok?: boolean; stored?: number; existing?: number; scanned?: number; added?: number; problems?: string[]; reportId?: string }
   | undefined;

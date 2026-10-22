@@ -210,3 +210,18 @@ export async function takeOnCapture(id: string) {
   revalidatePath("/hub/reporting");
   return { ok: true, reportId: r.reportId };
 }
+
+/** Close or reopen several captures at once (for working through a stream). */
+export async function setResultsStatus(ids: string[], status: string) {
+  const adminId = await requireAdmin();
+  if (!adminId) return { error: "Admins only." };
+  if (!["new", "reviewing", "actioned", "dismissed"].includes(status)) return { error: "Unknown status." };
+  const list = [...new Set(ids)].slice(0, 200);
+  if (list.length === 0) return { error: "Nothing selected." };
+  const handled = status === "new" ? { handled_by: null, handled_at: null } : { handled_by: adminId, handled_at: new Date().toISOString() };
+  let { error } = await db().from("listening_results").update({ status, ...handled }).in("id", list);
+  if (error && /handled_/i.test(error.message)) ({ error } = await db().from("listening_results").update({ status }).in("id", list));
+  if (error) return { error: "Could not save that just now." };
+  revalidatePath("/hub/reporting/listening");
+  return { ok: true };
+}

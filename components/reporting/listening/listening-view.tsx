@@ -12,7 +12,7 @@ import { Inbox } from "./inbox";
 import { WatchingPanel } from "./watching-panel";
 import { KeywordsPanel } from "./keywords-panel";
 import { CheckPanel } from "./check-panel";
-import { isLikelyReal, type ActionResult, type Keyword, type Result, type Run } from "./types";
+import type { ActionResult, InboxData, Keyword, Result, Run } from "./types";
 
 export type { Keyword, Result };
 
@@ -23,7 +23,7 @@ type Tab = "inbox" | "watching" | "keywords" | "check";
  * the setup screens sit one click away behind quiet tabs. Outcomes appear as
  * toasts rather than banners, so nothing shoves the content around.
  */
-export function ListeningView({ sources, keywords, results, packs }: { sources: Source[]; keywords: Keyword[]; results: Result[]; packs: PackState[] }) {
+export function ListeningView({ sources, keywords, inbox, packs }: { sources: Source[]; keywords: Keyword[]; inbox: InboxData; packs: PackState[] }) {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("inbox");
   const [busy, setBusy] = useState<string | null>(null);
@@ -48,13 +48,13 @@ export function ListeningView({ sources, keywords, results, packs }: { sources: 
     return res;
   };
 
-  const fresh = results.filter((r) => r.status === "new");
-  const freshReal = fresh.filter((r) => isLikelyReal(r.ai_class)).length;
+  const freshCount = inbox.counts.new ?? 0;
+  const freshReal = inbox.likelyNew;
   const watching = sources.filter((s) => s.active).length;
   const lastScan = sources.map((s) => s.last_scanned_at).filter(Boolean).sort().pop() ?? null;
 
   const tabs: { id: Tab; label: string; count?: number }[] = [
-    { id: "inbox", label: "Inbox", count: fresh.length },
+    { id: "inbox", label: "Inbox", count: freshCount },
     { id: "watching", label: "Listening to", count: watching },
     { id: "keywords", label: "Words" },
     { id: "check", label: "Check a post" },
@@ -71,7 +71,7 @@ export function ListeningView({ sources, keywords, results, packs }: { sources: 
           <p className="mt-1.5 text-sm text-muted">
             {freshReal > 0
               ? <><span className="font-semibold text-rose-600">{freshReal} likely real case{freshReal === 1 ? "" : "s"}</span> waiting for the team. </>
-              : fresh.length > 0 ? `${fresh.length} new capture${fresh.length === 1 ? "" : "s"} to look at. ` : "Nothing waiting. "}
+              : freshCount > 0 ? `${freshCount.toLocaleString()} new capture${freshCount === 1 ? "" : "s"} to look at. ` : "Nothing waiting. "}
             Shared by every admin and scanned every day
             {lastScan && <>, last at {new Date(lastScan).toLocaleString("en-KE", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</>}.
           </p>
@@ -103,7 +103,7 @@ export function ListeningView({ sources, keywords, results, packs }: { sources: 
         ))}
       </div>
 
-      {tab === "inbox" && <Inbox results={results} run={run} busy={busy} />}
+      {tab === "inbox" && <Inbox data={inbox} run={run} busy={busy} />}
       {tab === "watching" && <WatchingPanel sources={sources} packs={packs} run={run} busy={busy} />}
       {tab === "keywords" && <KeywordsPanel keywords={keywords} run={run} busy={busy} />}
       {tab === "check" && <CheckPanel run={run} busy={busy} />}
