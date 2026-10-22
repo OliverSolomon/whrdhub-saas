@@ -40,6 +40,7 @@ export interface ReportData {
   reporting_for: "self" | "someone_else" | "community_leader";
   // WHERE & WHEN
   county?: string;
+  country?: string;
   location_description?: string;
   latitude?: number;
   longitude?: number;
@@ -54,6 +55,9 @@ export interface ReportData {
   why_description?: string;
   // SUPPORT
   support_needed: string[];
+  /** What the reporter typed under "Other" support. */
+  support_other?: string;
+  risks?: string[];
   urgency: "immediate" | "within_week" | "no_rush";
   consent_to_followup: boolean;
   contact_method?: string;
@@ -151,6 +155,7 @@ export async function submitReport(data: ReportData): Promise<SubmitReportResult
       reporting_for:      data.reporting_for,
       // WHERE & WHEN
       county:               data.county               || null,
+      country:              data.country              || null,
       location_description: data.location_description || null,
       latitude:             data.latitude             ?? null,
       longitude:            data.longitude            ?? null,
@@ -164,6 +169,8 @@ export async function submitReport(data: ReportData): Promise<SubmitReportResult
       activism_context: data.activism_context || null,
       // SUPPORT
       support_needed:      data.support_needed,
+      support_other:       data.support_other || null,
+      risks:               data.risks?.length ? data.risks : [],
       urgency:             data.urgency,
       consent_to_followup: data.consent_to_followup,
       contact_method:      data.contact_method || null,
