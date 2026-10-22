@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Eye, EyeOff, Shield, AlertCircle, Link as LinkIcon,
   Check, MapPin, Upload, X, Loader2, Image as ImageIcon, ChevronDown,
@@ -23,6 +23,8 @@ import { VoiceInput } from "@/components/reporting/voice-input";
 import { useOnline } from "@/lib/use-online";
 import { uploadReportVoiceNote } from "@/lib/supabase/storage";
 import { attachVoiceNote, attachScreenshots } from "@/app/actions/report-update";
+import { previewSharedPost } from "@/app/actions/share";
+import { readShared, clearShared, firstUrl, platformFromUrl, type SharedItem } from "@/lib/shared-intake";
 
 // ─── dual-language label helper ──────────────────────────────────────────────
 // When isDualLang is true (EN or SW), show primary label + secondary in parentheses.
@@ -189,6 +191,9 @@ export default function ReportForm({ isAuthenticated = false, userEmail }: Repor
   const [incidentTypes, setIncidentTypes] = useState<string[]>([]);
   const [voiceBlob, setVoiceBlob] = useState<Blob | null>(null);
   const online = useOnline();
+  const searchParams = useSearchParams();
+  const [contentText, setContentText] = useState("");
+  const [sharedNote, setSharedNote] = useState<string | null>(null);
 
   // What happened
   const [description, setDescription]   = useState("");
@@ -236,6 +241,43 @@ export default function ReportForm({ isAuthenticated = false, userEmail }: Repor
       p => { setLatitude(p.coords.latitude); setLongitude(p.coords.longitude); },
       () => {}
     );
+  }, []);
+
+  // Something shared to the app from another app (a link, a screenshot, a photo) opens the form
+  // already filled in. Nothing is sent until the person presses submit.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      await Promise.resolve();
+      let shared: SharedItem | null = null;
+      if (searchParams.get("shared") === "1") shared = await readShared();
+      else if (searchParams.get("link") || searchParams.get("text")) {
+        shared = { title: "", text: searchParams.get("text") ?? "", url: searchParams.get("link") ?? "", files: [], at: Date.now() };
+      }
+      if (!shared || cancelled) return;
+
+      const url = shared.url || firstUrl(`${shared.text} ${shared.title}`) || "";
+      // The words people share usually are the address; keep anything else they wrote.
+      const words = [shared.title, shared.text].filter(Boolean).join("\n\n").replace(url, "").trim();
+      const files = shared.files.slice(0, 10).map((f) => new File([f.blob], f.name, { type: f.type }));
+
+      if (url) {
+        setLink(url);
+        const plat = platformFromUrl(url);
+        if (plat) setPlatform(plat);
+        setIncidentTypes((cur) => (cur.includes("digital_threats") ? cur : [...cur, "digital_threats"]));
+        const preview = await previewSharedPost(url).catch(() => null);
+        if (preview && !cancelled) setContentText(`${preview.author ? preview.author + ": " : ""}${preview.text}`);
+      }
+      if (words) setDescription((d) => d || words);
+      if (files.length) setScreenshotFiles((cur) => [...cur, ...files].slice(0, 10));
+      const parts = [url && "a link", files.length && `${files.length} file${files.length === 1 ? "" : "s"}`, words && "some words"].filter(Boolean);
+      setSharedNote(`Shared with WHRD Hub: ${parts.join(", ") || "something"}. Add what happened and press submit; nothing has been sent yet.`);
+      await clearShared();
+    })();
+    return () => { cancelled = true; };
+    // Runs once, when the form opens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const validate = (): Record<string, string> => {
@@ -323,6 +365,7 @@ export default function ReportForm({ isAuthenticated = false, userEmail }: Repor
         perpetrator_detail: perpetratorDetail || undefined,
         tfgbv_platform: isOnline && platform ? platform : undefined,
         tfgbv_link: isOnline && link ? link : undefined,
+        tfgbv_content_text: isOnline && contentText.trim() ? contentText.trim() : undefined,
         tfgbv_screenshot_urls: uploadedUrls.length ? uploadedUrls : undefined,
         support_needed: allSupport,
         support_other: allSupport.includes("other") ? supportOther.trim() : undefined,
@@ -440,6 +483,13 @@ export default function ReportForm({ isAuthenticated = false, userEmail }: Repor
           `Form has ${Object.keys(fieldErrors).length} error${Object.keys(fieldErrors).length > 1 ? "s" : ""}. ${Object.values(fieldErrors).join(". ")}.`
         }
       </div>
+
+      {sharedNote && (
+        <div role="status" className="flex items-start justify-between gap-3 rounded-2xl border border-purple/20 bg-purple-050 px-4 py-3 text-sm text-purple-700">
+          <p>{sharedNote}</p>
+          <button type="button" onClick={() => setSharedNote(null)} aria-label="Dismiss" className="shrink-0 text-purple-700/70 hover:text-purple-700"><X className="h-4 w-4" /></button>
+        </div>
+      )}
 
       {/* ── Context ─────────────────────────────────────────────── */}
       <Card title={tr.sections.aboutReport} subtitle={tr.sections.aboutReportSub}>
@@ -633,6 +683,15 @@ export default function ReportForm({ isAuthenticated = false, userEmail }: Repor
                 className="w-full rounded-xl border border-line bg-surface pl-9 pr-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple"
               />
             </div>
+          </Field>
+
+          <Field label="What the post says (optional)" hint="Copy or paste the words, so they are kept even if the post is deleted.">
+            <Textarea
+              value={contentText}
+              onChange={e => setContentText(e.target.value)}
+              rows={3}
+              className="rounded-xl"
+            />
           </Field>
 
           <Field label={L("screenshots")}>

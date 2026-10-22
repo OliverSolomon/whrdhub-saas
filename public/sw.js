@@ -7,7 +7,7 @@
  * back to the offline page only when the network is unavailable.
  */
 
-const VERSION = "whrd-v3";
+const VERSION = "whrd-v4";
 const STATIC_CACHE = `${VERSION}-static`;
 const OFFLINE_URL = "/offline";
 
@@ -59,6 +59,13 @@ function isStaticAsset(url) {
 
 self.addEventListener("fetch", (event) => {
   const { request } = event;
+
+  // A link, screenshot or photo shared to the app from another app.
+  if (request.method === "POST" && new URL(request.url).pathname === "/share-target") {
+    event.respondWith(handleShare(request));
+    return;
+  }
+
   if (request.method !== "GET") return;
 
   const url = new URL(request.url);
@@ -159,3 +166,47 @@ self.addEventListener("notificationclick", (event) => {
     })()
   );
 });
+
+// ── Sharing to the app ────────────────────────────────────────────────────
+// The shared files stay on this device (IndexedDB) until the report form takes
+// them. Nothing is sent anywhere by the act of sharing.
+function openShareDb() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open("whrd-share", 1);
+    req.onupgradeneeded = () => req.result.createObjectStore("shared");
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function saveShared(item) {
+  const db = await openShareDb();
+  await new Promise((resolve, reject) => {
+    const tx = db.transaction("shared", "readwrite");
+    tx.objectStore("shared").put(item, "latest");
+    tx.oncomplete = resolve;
+    tx.onerror = () => reject(tx.error);
+  });
+  db.close();
+}
+
+async function handleShare(request) {
+  const to = (path) => Response.redirect(new URL(path, self.location.origin).href, 303);
+  try {
+    const form = await request.formData();
+    const files = form.getAll("media")
+      .filter((f) => f && typeof f === "object" && f.size > 0)
+      .slice(0, 10)
+      .map((f) => ({ name: f.name || "shared", type: f.type || "application/octet-stream", blob: f }));
+    await saveShared({
+      title: String(form.get("title") || ""),
+      text: String(form.get("text") || ""),
+      url: String(form.get("url") || ""),
+      files,
+      at: Date.now(),
+    });
+    return to("/report?shared=1");
+  } catch (e) {
+    return to("/report");
+  }
+}
