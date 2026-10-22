@@ -2,6 +2,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { ListeningView } from "@/components/reporting/listening/listening-view";
 import type { Keyword, Result } from "@/components/reporting/listening/types";
 import type { Source } from "@/lib/listening-sources";
+import { ensurePacks } from "@/lib/listening-packs";
 
 export const metadata = { title: "Online Listening - WHRD Hub" };
 
@@ -28,11 +29,14 @@ export default async function ListeningPage() {
   }
   const results: Result[] = rows.map((r) => ({ ...(r as unknown as Result), handled_by_name: r.handled_by ? names.get(r.handled_by as string) ?? "a colleague" : null }));
 
-  const [{ data: keywords }, { data: sources }] = await Promise.all([
-    db.from("listening_keywords").select("id, word, severity, active").order("word"),
-    // Until migration 018 is applied the table does not exist; show none rather than fail.
-    db.from("listening_sources").select("id, platform, kind, handle, note, active, last_scanned_at, last_result").order("created_at", { ascending: false }),
-  ]);
+  // The preset packs (Usikimye, Political) add their accounts and words the first time they are seen.
+  const packs = await ensurePacks();
 
-  return <ListeningView sources={(sources ?? []) as Source[]} keywords={(keywords ?? []) as Keyword[]} results={results} />;
+  const srcBase = "id, platform, kind, handle, note, active, last_scanned_at, last_result";
+  const withPack = await db.from("listening_sources").select(`${srcBase}, index_all, pack`).order("created_at", { ascending: false });
+  // Until migrations 018 and 020 are applied the table or columns may be missing; show what exists rather than fail.
+  const sources = withPack.error ? (await db.from("listening_sources").select(srcBase).order("created_at", { ascending: false })).data : withPack.data;
+  const { data: keywords } = await db.from("listening_keywords").select("id, word, severity, active").order("word");
+
+  return <ListeningView sources={(sources ?? []) as Source[]} keywords={(keywords ?? []) as Keyword[]} results={results} packs={packs ?? []} />;
 }

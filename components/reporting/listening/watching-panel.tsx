@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { Loader2, Plus } from "lucide-react";
-import { addSource, toggleSource, removeSource } from "@/app/actions/listening";
+import { addSource, toggleSource, removeSource, togglePack } from "@/app/actions/listening";
+import type { PackState } from "@/lib/listening-packs";
 import type { Source } from "@/lib/listening-sources";
 import { SUGGESTED_SOURCES } from "@/lib/listening-suggestions";
 import { PLATFORM_LABEL, type Run } from "./types";
@@ -10,7 +11,7 @@ import { PLATFORM_LABEL, type Run } from "./types";
 type Platform = "instagram" | "x" | "facebook";
 
 /** The accounts and hashtags being listened to: add, pause (kept on the list but ignored) or remove. */
-export function WatchingPanel({ sources, run, busy }: { sources: Source[]; run: Run; busy: string | null }) {
+export function WatchingPanel({ sources, packs, run, busy }: { sources: Source[]; packs: PackState[]; run: Run; busy: string | null }) {
   const [platform, setPlatform] = useState<Platform>("instagram");
   const [kind, setKind] = useState<"profile" | "hashtag">("profile");
   const [value, setValue] = useState("");
@@ -23,6 +24,38 @@ export function WatchingPanel({ sources, run, busy }: { sources: Source[]; run: 
 
   return (
     <div className="space-y-6">
+      {packs.length > 0 && (
+        <section className="card-premium p-5 sm:p-7">
+          <h2 className="font-display text-lg font-bold tracking-tight text-ink">Preset listening</h2>
+          <p className="mt-1 text-sm text-muted">Set up for you and switched on. Posts from these are indexed as cases automatically. Turn a pack off to pause it; nothing already captured is removed.</p>
+          <ul className="mt-4 grid gap-3 md:grid-cols-2">
+            {packs.map((p) => (
+              <li key={p.id} className={`rounded-2xl border p-4 transition-colors ${p.enabled ? "border-purple/30 bg-purple-050/40" : "border-line bg-surface"}`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold text-ink">{p.name}</p>
+                    <p className="mt-1 text-xs leading-relaxed text-muted">{p.blurb}</p>
+                    <p className="mt-2 text-[11px] font-semibold text-muted">
+                      {[p.accounts ? `${p.accounts} account${p.accounts === 1 ? "" : "s"}` : null, p.words ? `${p.words} words` : null].filter(Boolean).join(" · ")}
+                    </p>
+                  </div>
+                  <button
+                    role="switch"
+                    aria-checked={p.enabled}
+                    aria-label={`${p.name} listening`}
+                    onClick={() => run(`pack-${p.id}`, () => togglePack(p.id, !p.enabled))}
+                    disabled={busy !== null}
+                    className={`relative mt-0.5 h-6 w-11 shrink-0 rounded-full transition-colors disabled:opacity-60 ${p.enabled ? "bg-purple" : "bg-line"}`}
+                  >
+                    <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${p.enabled ? "left-[22px]" : "left-0.5"}`} />
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       <section className="card-premium p-5 sm:p-7">
         <h2 className="font-display text-lg font-bold tracking-tight text-ink">Listening to</h2>
         <p className="mt-1 text-sm text-muted">
@@ -37,6 +70,8 @@ export function WatchingPanel({ sources, run, busy }: { sources: Source[]; run: 
                 {s.kind === "hashtag" ? "#" : "@"}{s.handle}
               </span>
               <span className="rounded-full bg-paper px-2 py-0.5 text-[11px] font-semibold text-muted">{PLATFORM_LABEL[s.platform] ?? s.platform}</span>
+              {s.pack && <span className="rounded-full bg-purple-050 px-2 py-0.5 text-[11px] font-semibold text-purple-700">Preset</span>}
+              {s.index_all && <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">Every post indexed</span>}
               <span className="text-xs text-muted">
                 {!s.active
                   ? s.kind === "profile" ? "Paused. Its posts are ignored." : "Paused."

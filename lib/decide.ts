@@ -58,8 +58,12 @@ async function ask(state: string, instructions: string, criteria: Record<string,
   const text = state.slice(0, 24_000);
   const viaRouter = routerKey();
   if (viaRouter) {
-    const r = await call("https://openrouter.ai/api/alpha/decisions", viaRouter, process.env.JEV_MODEL || "typesafe/jev-1.13", { text }, instructions, criteria);
-    if (r) return r;
+    // The router occasionally times out or rate-limits under a burst; one more try fixes most of those.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const r = await call("https://openrouter.ai/api/alpha/decisions", viaRouter, process.env.JEV_MODEL || "typesafe/jev-1.13", { text }, instructions, criteria);
+      if (r) return r;
+      await new Promise((resolve) => setTimeout(resolve, 700));
+    }
   }
   const direct = jevKey();
   if (direct) return call("https://api.typesafe.ai/v1/systemone", direct, process.env.JEV_MODEL_DIRECT || "jev-latest", text, instructions, criteria);

@@ -6,6 +6,7 @@ import { requireReportingAdmin } from "@/lib/reporting-access";
 import { ingestItems } from "@/lib/listening";
 import { readSocialLink, socialEnabled, validHandle } from "@/lib/social-fetch";
 import { scanAll } from "@/lib/listening-sources";
+import { setPackEnabled } from "@/lib/listening-packs";
 import { POLITICAL_HARASSMENT_KEYWORDS } from "@/lib/political-harassment";
 import type { RawItem } from "@/lib/meta";
 
@@ -81,9 +82,10 @@ export async function scanSocialLinks(input: string) {
     }
   }
   try {
-    const { stored, triaged } = await ingestItems(items, { triage: true });
+    // Posts someone hands over on purpose are always kept, whatever they say.
+    const { stored, existing } = await ingestItems(items, { triage: true, index: "all" });
     revalidatePath("/hub/reporting/listening");
-    return { ok: true, scanned: items.length, stored, triaged, problems };
+    return { ok: true, scanned: items.length, stored, existing, problems };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Scan failed." };
   }
@@ -182,4 +184,12 @@ export async function scanAllNow() {
   revalidatePath("/hub/reporting/listening");
   if (r.message) return { error: r.message };
   return { ok: true, scanned: r.read, stored: r.stored };
+}
+
+/** Switch a preset pack on or off. Off pauses its accounts and mutes its words; nothing captured is removed. */
+export async function togglePack(id: string, enabled: boolean) {
+  if (!(await requireAdmin())) return { error: "Admins only." };
+  await setPackEnabled(id, enabled);
+  revalidatePath("/hub/reporting/listening");
+  return { ok: true };
 }

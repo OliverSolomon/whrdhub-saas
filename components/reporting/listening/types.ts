@@ -18,7 +18,7 @@ export interface Result {
 }
 
 export type ActionResult =
-  | { error?: string; ok?: boolean; stored?: number; scanned?: number; added?: number; problems?: string[] }
+  | { error?: string; ok?: boolean; stored?: number; existing?: number; scanned?: number; added?: number; problems?: string[] }
   | undefined;
 
 /** Runs a server action with a busy flag, a toast for the outcome, and a refresh of the page data. */
@@ -28,12 +28,13 @@ export const PLATFORM_LABEL: Record<string, string> = { instagram: "Instagram", 
 
 export const AI_LABEL: Record<string, { label: string; cls: string }> = {
   real_incident: { label: "Likely a real case", cls: "bg-rose-50 text-rose-700 border-rose-200" },
+  missing_person: { label: "Missing person", cls: "bg-rose-50 text-rose-700 border-rose-200" },
   targeted_abuse: { label: "Abuse aimed at someone", cls: "bg-amber-50 text-amber-800 border-amber-200" },
   awareness: { label: "Awareness or news", cls: "bg-cyan-050 text-cyan-700 border-cyan/30" },
   not_relevant: { label: "Likely not relevant", cls: "bg-slate-50 text-slate-500 border-slate-200" },
 };
 
-export const isLikelyReal = (c?: string | null) => c === "real_incident" || c === "targeted_abuse";
+export const isLikelyReal = (c?: string | null) => c === "real_incident" || c === "missing_person" || c === "targeted_abuse";
 
 /** Severity as a small coloured dot, so a list can be scanned without reading badges. */
 export const SEVERITY_DOT: Record<string, string> = { high: "bg-rose-500", medium: "bg-amber-500", low: "bg-slate-300" };

@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Playfair_Display } from "next/font/google";
+import { Geist } from "next/font/google";
 
 import "./globals.css";
 import { AccessibilityWidget } from "@/components/accessibility-widget";
@@ -13,13 +13,6 @@ import { SITE_URL, SITE_NAME, SITE_TAGLINE, SITE_DESCRIPTION } from "@/lib/seo";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
-  display: "swap",
-  subsets: ["latin"],
-});
-
-// Display face for headings on the calmer, more editorial surfaces (reporting).
-const playfair = Playfair_Display({
-  variable: "--font-playfair",
   display: "swap",
   subsets: ["latin"],
 });
@@ -74,7 +67,7 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={`${geistSans.variable} ${playfair.variable} h-full`}>
+    <html lang="en" className={`${geistSans.variable} h-full`}>
       <body className="min-h-full">
         <Providers>{children}</Providers>
         <AccessibilityWidget />

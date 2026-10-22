@@ -7,6 +7,7 @@ import { scanAllNow } from "@/app/actions/listening";
 import { toast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 import type { Source } from "@/lib/listening-sources";
+import type { PackState } from "@/lib/listening-packs";
 import { Inbox } from "./inbox";
 import { WatchingPanel } from "./watching-panel";
 import { KeywordsPanel } from "./keywords-panel";
@@ -22,7 +23,7 @@ type Tab = "inbox" | "watching" | "keywords" | "check";
  * the setup screens sit one click away behind quiet tabs. Outcomes appear as
  * toasts rather than banners, so nothing shoves the content around.
  */
-export function ListeningView({ sources, keywords, results }: { sources: Source[]; keywords: Keyword[]; results: Result[] }) {
+export function ListeningView({ sources, keywords, results, packs }: { sources: Source[]; keywords: Keyword[]; results: Result[]; packs: PackState[] }) {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("inbox");
   const [busy, setBusy] = useState<string | null>(null);
@@ -40,7 +41,7 @@ export function ListeningView({ sources, keywords, results }: { sources: Source[
       toast.error(res.error);
     } else {
       if (typeof res?.added === "number") toast.success(res.added ? `Added ${res.added} word${res.added === 1 ? "" : "s"}.` : "Those words are already on your list.");
-      else if (typeof res?.stored === "number") toast.success(res.scanned ? `Looked at ${res.scanned} post${res.scanned === 1 ? "" : "s"} and kept ${res.stored} for review.` : "Scan finished. Nothing new to look at.");
+      else if (typeof res?.stored === "number") toast.success(res.scanned ? `Looked at ${res.scanned} post${res.scanned === 1 ? "" : "s"}: ${res.stored} new in your inbox${res.existing ? `, ${res.existing} already there` : ""}.` : "Scan finished. Nothing new to look at.");
       if (res?.problems?.length) toast.error(res.problems.slice(0, 2).join(" · "));
     }
     router.refresh();
@@ -103,7 +104,7 @@ export function ListeningView({ sources, keywords, results }: { sources: Source[
       </div>
 
       {tab === "inbox" && <Inbox results={results} run={run} busy={busy} />}
-      {tab === "watching" && <WatchingPanel sources={sources} run={run} busy={busy} />}
+      {tab === "watching" && <WatchingPanel sources={sources} packs={packs} run={run} busy={busy} />}
       {tab === "keywords" && <KeywordsPanel keywords={keywords} run={run} busy={busy} />}
       {tab === "check" && <CheckPanel run={run} busy={busy} />}
     </div>

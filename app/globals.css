@@ -49,7 +49,8 @@
   --color-cyan-700: var(--cyan-700);
 
   --font-sans: var(--font-geist-sans);
-  --font-display: var(--font-playfair), Georgia, serif;
+  /* One typeface across the app: headings use the same calm sans as everything else. */
+  --font-display: var(--font-geist-sans), system-ui, sans-serif;
 
   /* Soft, layered, slightly violet shadows: depth without heaviness. */
   --shadow-premium: 0 1px 2px rgba(28, 21, 34, 0.04), 0 14px 34px -14px rgba(77, 47, 115, 0.18);

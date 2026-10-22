@@ -3,6 +3,7 @@ import { recentInstagramPosts, recentXPosts, recentFacebookPosts, instagramConfi
 import { ingestItems } from "@/lib/listening";
 import { broadcastToStaff } from "@/lib/alerts";
 import { fetchRecentContent, metaConfigured } from "@/lib/meta";
+import { ensurePacks } from "@/lib/listening-packs";
 import type { RawItem } from "@/lib/meta";
 
 /**
@@ -32,6 +33,8 @@ export interface Source {
   kind: "profile" | "hashtag";
   handle: string;
   note: string | null;
+  index_all?: boolean | null;
+  pack?: string | null;
   active: boolean;
   last_scanned_at: string | null;
   last_result: string | null;
@@ -45,15 +48,20 @@ export async function scanSources(onlyId?: string): Promise<ScanSummary> {
   const canX = socialEnabled() && !!process.env.APIFY_TOKEN;
   if (!canInstagram && !canX) return { sources: 0, read: 0, stored: 0, bursts: 0 };
 
-  let q = db().from("listening_sources").select("id, platform, kind, handle").eq("active", true);
-  if (onlyId) q = q.eq("id", onlyId);
-  const { data, error } = await q.order("last_scanned_at", { ascending: true, nullsFirst: true }).limit(MAX_SOURCES);
+  const pick = (cols: string) => {
+    let q = db().from("listening_sources").select(cols).eq("active", true);
+    if (onlyId) q = q.eq("id", onlyId);
+    return q.order("last_scanned_at", { ascending: true, nullsFirst: true }).limit(MAX_SOURCES);
+  };
+  let { data, error } = await pick("id, platform, kind, handle, index_all");
+  // Before migration 020 there is no index_all column; scan as before.
+  if (error) ({ data, error } = await pick("id, platform, kind, handle"));
   // The table is created by a migration; until then there is simply nothing watched.
   if (error) return { sources: 0, read: 0, stored: 0, bursts: 0 };
 
   let read = 0;
   let stored = 0;
-  for (const src of (data ?? []) as Pick<Source, "id" | "platform" | "kind" | "handle">[]) {
+  for (const src of (data ?? []) as Pick<Source, "id" | "platform" | "kind" | "handle" | "index_all">[]) {
     let result = "ok";
     try {
       const posts = src.platform === "x"
@@ -63,9 +71,9 @@ export async function scanSources(onlyId?: string): Promise<ScanSummary> {
           : await recentInstagramPosts(src.kind, src.handle, POSTS_PER_SOURCE);
       read += posts.length;
       const items: RawItem[] = posts.map((p) => ({ source: p.source, source_id: p.sourceId, permalink: p.url, author: p.author, content: p.text }));
-      const r = await ingestItems(items, { triage: true });
+      const r = await ingestItems(items, { triage: true, index: src.index_all ? "relevant" : undefined });
       stored += r.stored;
-      result = `${posts.length} read, ${r.stored} kept`;
+      result = `${posts.length} read, ${r.stored} new`;
     } catch (err) {
       result = `could not be read${err instanceof Error ? ` (${err.message.slice(0, 40)})` : ""}`;
     }
@@ -80,6 +88,9 @@ export async function scanSources(onlyId?: string): Promise<ScanSummary> {
  * every watched Instagram and X account or hashtag, then a check for campaigns.
  */
 export async function scanAll(): Promise<ScanSummary> {
+  // Preset accounts and words exist from the first scan, without anyone opening the page first.
+  await ensurePacks().catch(() => null);
+
   let read = 0;
   let stored = 0;
 

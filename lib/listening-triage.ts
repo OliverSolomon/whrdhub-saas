@@ -14,10 +14,11 @@ import { decideChoice, decideConfigured } from "@/lib/decide";
  * lib/decide.ts).
  */
 
-export type PostClass = "real_incident" | "targeted_abuse" | "awareness" | "not_relevant";
+export type PostClass = "real_incident" | "missing_person" | "targeted_abuse" | "awareness" | "not_relevant";
 
 export const POST_CLASS_LABEL: Record<PostClass, string> = {
   real_incident: "Likely a real case",
+  missing_person: "Missing person",
   targeted_abuse: "Abuse aimed at someone",
   awareness: "Awareness or news",
   not_relevant: "Likely not relevant",
@@ -25,7 +26,9 @@ export const POST_CLASS_LABEL: Record<PostClass, string> = {
 
 const CRITERIA: Record<PostClass, string> = {
   real_incident:
-    "The writer says abuse has happened or is happening to them or to someone specific they know: violence, threats, detention, a disappearance, sexual violence, stalking, online harassment. A response team could act on it.",
+    "The writer says abuse has happened or is happening to them or to someone specific they know: violence, threats, detention, sexual violence, stalking, online harassment. A response team could act on it.",
+  missing_person:
+    "Announces or appeals for a missing, abducted or disappeared person: usually a name, an age, a photo, where and when they were last seen, and a request for help finding them.",
   targeted_abuse:
     "The post is itself abuse: a threat, slur, smear, doxxing or harassment aimed at a woman, an activist or a human rights defender.",
   awareness:
@@ -70,9 +73,9 @@ export async function triagePosts(texts: string[]): Promise<(Triage | null)[]> {
   const learned = await examples();
   const out: (Triage | null)[] = new Array(texts.length).fill(null);
   // A few at a time: fast enough, and kind to the API.
-  for (let i = 0; i < texts.length; i += 4) {
+  for (let i = 0; i < texts.length; i += 2) {
     await Promise.all(
-      texts.slice(i, i + 4).map(async (text, j) => {
+      texts.slice(i, i + 2).map(async (text, j) => {
         const r = await decideChoice<PostClass>(`${learned}Post:\n${clip(text, 1800)}`, QUESTION, CRITERIA);
         if (r) out[i + j] = { cls: r.choice, confidence: Math.round(r.probability * 100) / 100 };
       }),
@@ -85,4 +88,4 @@ export const triageConfigured = decideConfigured;
 
 /** Posts worth a person's time. */
 export const isActionable = (t: Triage | null) =>
-  !!t && (t.cls === "real_incident" || t.cls === "targeted_abuse") && t.confidence >= 0.6;
+  !!t && (t.cls === "real_incident" || t.cls === "missing_person" || t.cls === "targeted_abuse") && t.confidence >= 0.6;
