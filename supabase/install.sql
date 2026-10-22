@@ -1066,6 +1066,33 @@ create index if not exists profiles_banned_idx
 -- ║  4. Functions                                                           ║
 -- ╚════════════════════════════════════════════════════════════════════════╝
 
+-- ── Clear out older versions of the functions below ───────────────────────
+--
+-- `create or replace function` cannot change a function's return type, so a
+-- project that still has an older version of one of these stops at the first
+-- mismatch with "cannot change return type of existing function". Each
+-- function this script defines is therefore dropped first. One that a policy,
+-- trigger or other object still depends on cannot be dropped without breaking
+-- that object, so it is left alone and replaced in place, which works whenever
+-- its signature is unchanged (and it is, for all of those).
+do $$
+declare r record;
+begin
+  for r in
+    select p.oid::regprocedure as sig
+      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+     where n.nspname = 'public'
+       and p.prokind = 'f'
+       and p.proname = any (array['ban_account', 'blogs_before_write', 'can_administer_reports', 'can_post_to_feed', 'can_triage_reports', 'delete_account', 'delete_own_content', 'fill_report_notification_copy', 'get_my_user_type', 'get_report_stats', 'get_user_report_count', 'guard_profile_privileges', 'handle_new_user', 'handle_report_matching', 'handle_report_verified', 'handle_service_assigned_notify', 'handle_updated_at', 'hub_member_growth', 'hub_overview', 'hub_submissions_timeseries', 'is_banned', 'is_hub_admin', 'is_org_admin', 'match_report_services', 'matching_overview', 'membership_before_write', 'my_admin_org_ids', 'my_org_ids', 'my_sessions', 'notify_match_progress', 'posts_before_write', 'resources_before_write', 'respond_to_match', 'restore_account', 'restore_content', 'revoke_other_sessions', 'revoke_session', 'slugify', 'stamp_soft_delete', 'suspend_member', 'sync_notification_read_flags', 'unban_account', 'unsuspend_member'])
+  loop
+    begin
+      execute format('drop function if exists %s', r.sig);
+    exception when others then
+      null;
+    end;
+  end loop;
+end $$;
+
 -- ── Roles ────────────────────────────────────────────────────────────────
 --
 -- Two role systems met when the reporting platform and the Hub became one app:
