@@ -62,7 +62,8 @@ export function VoiceInput({
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
       const mime = pickMime();
-      const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+      // 24 kbps is plenty for speech and keeps a three-minute note around 500 KB, which matters on poor data.
+      const rec = new MediaRecorder(stream, { ...(mime ? { mimeType: mime } : {}), audioBitsPerSecond: 24_000 });
       chunks.current = [];
       rec.ondataavailable = (e) => { if (e.data.size) chunks.current.push(e.data); };
       rec.onstop = () => {

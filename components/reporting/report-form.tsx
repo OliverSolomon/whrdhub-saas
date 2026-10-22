@@ -269,7 +269,8 @@ export default function ReportForm({ isAuthenticated = false, userEmail }: Repor
     // Persist a report to the on-device offline queue and show confirmation.
     const saveOffline = async (p: ReportData): Promise<boolean> => {
       try {
-        await enqueueReport(p);
+        // A voice note can wait too, but only for someone signed in: it needs their session to be saved.
+        await enqueueReport(p, isAuthenticated ? voiceBlob ?? undefined : undefined);
         await requestBackgroundSync();
         if (typeof window !== "undefined") window.dispatchEvent(new Event(QUEUE_CHANGED_EVENT));
         setOfflineSaved(true);
@@ -508,7 +509,7 @@ export default function ReportForm({ isAuthenticated = false, userEmail }: Repor
           defaultLang={language === "sw" ? "sw-KE" : "en-KE"}
           onText={(t) => setDescription((d) => (d.trim() ? `${d.trimEnd()} ${t}` : t))}
           onRecording={setVoiceBlob}
-          canAttach={online}
+          canAttach={online || isAuthenticated}
         />
 
         <div className="grid sm:grid-cols-2 gap-4">

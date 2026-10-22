@@ -165,6 +165,12 @@ html { font-size: calc(100% * var(--a11y-scale, 1)); }
 /* Always underline links for easier scanning. */
 .a11y-links a { text-decoration: underline !important; text-underline-offset: 2px; }
 
+/* Low data mode: skip large remote photos and the effects that cost paint time on cheap phones. */
+.a11y-lite img[src^="http"] { display: none !important; }
+.a11y-lite * { backdrop-filter: none !important; }
+.a11y-lite .card-premium, .a11y-lite [class*="shadow"] { box-shadow: none !important; }
+.a11y-lite .calm-wash, .a11y-lite .brand-wash { background: var(--paper) !important; }
+
 /* Reduce motion. */
 .a11y-motion *, .a11y-motion *::before, .a11y-motion *::after {
   animation-duration: 0.001ms !important;
