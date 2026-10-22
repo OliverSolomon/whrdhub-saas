@@ -329,6 +329,8 @@ export default function ReportForm({ isAuthenticated = false, userEmail }: Repor
 
       const result = await submitReport(payload);
       if (result.success) {
+        // Remembered for this tab only, so the next page can show a safety plan that fits what happened.
+        try { sessionStorage.setItem("whrd:last-incident-types", JSON.stringify(incidentTypes)); } catch { /* storage blocked */ }
         if (isAuthenticated) {
           toast.success("Report submitted. Thank you for your courage.");
           router.push("/dashboard/reports");

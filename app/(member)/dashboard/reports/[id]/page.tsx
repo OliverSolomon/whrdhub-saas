@@ -11,6 +11,7 @@ import { translations } from "@/lib/i18n/translations";
 import { getServerLanguage } from "@/lib/i18n/server";
 import { ReportUpdateButton } from "@/components/reporting/report-update-button";
 import { ReportRisksButton } from "@/components/reporting/report-risks-button";
+import { SafetyPlan } from "@/components/reporting/safety-plan";
 import { incidentLabel, riskLabel, supportLabel } from "@/lib/reporting-options";
 import { urgencyMeta } from "@/lib/urgency";
 
@@ -312,6 +313,12 @@ export default async function ReportDetailPage({
           </div>
         </Section>
       )}
+
+      <SafetyPlan
+        planKey={report.id as string}
+        incidentTypes={(report.incident_types as string[]) ?? []}
+        risks={(report.risks as string[]) ?? []}
+      />
 
       <Section title={t.assignedServices}>
         {services.length === 0 ? (
