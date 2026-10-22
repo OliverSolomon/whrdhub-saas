@@ -23,7 +23,7 @@ export async function pollMeta() {
   if (!metaConfigured()) return { error: "Meta is not connected yet. Add the META_* environment variables first." };
   try {
     const items = await fetchRecentContent();
-    const { stored } = await ingestItems(items);
+    const { stored } = await ingestItems(items, { triage: true });
     revalidatePath("/hub/reporting/listening");
     return { ok: true, stored, scanned: items.length };
   } catch (err) {
@@ -103,9 +103,9 @@ export async function scanSocialLinks(input: string) {
     }
   }
   try {
-    const { stored } = await ingestItems(items);
+    const { stored, triaged } = await ingestItems(items, { triage: true });
     revalidatePath("/hub/reporting/listening");
-    return { ok: true, scanned: items.length, stored, problems };
+    return { ok: true, scanned: items.length, stored, triaged, problems };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Scan failed." };
   }

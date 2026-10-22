@@ -13,7 +13,16 @@ export interface Keyword { id: string; word: string; severity: string; active: b
 export interface Result {
   id: string; source: string; permalink: string | null; author: string | null;
   content: string; matched_keywords: string[]; severity: string; status: string; captured_at: string;
+  ai_class?: string | null; ai_confidence?: number | null;
 }
+
+const AI_LABEL: Record<string, { label: string; cls: string }> = {
+  real_incident: { label: "Likely a real case", cls: "bg-rose-50 text-rose-700 border-rose-200" },
+  targeted_abuse: { label: "Abuse aimed at someone", cls: "bg-amber-50 text-amber-800 border-amber-200" },
+  awareness: { label: "Awareness or news", cls: "bg-cyan-050 text-cyan-700 border-cyan/30" },
+  not_relevant: { label: "Likely not relevant", cls: "bg-slate-50 text-slate-500 border-slate-200" },
+};
+const isLikelyReal = (c?: string | null) => c === "real_incident" || c === "targeted_abuse";
 
 const SEV: Record<string, string> = {
   high: "bg-red-100 text-red-700 border-red-200",
@@ -22,7 +31,7 @@ const SEV: Record<string, string> = {
 };
 const STATUS_TABS = ["new", "reviewing", "actioned", "dismissed"] as const;
 
-export function ListeningView({ connected, socialReady, keywords, results }: { connected: boolean; socialReady: boolean; keywords: Keyword[]; results: Result[] }) {
+export function ListeningView({ connected, socialReady, triageReady, keywords, results }: { connected: boolean; socialReady: boolean; triageReady: boolean; keywords: Keyword[]; results: Result[] }) {
   const router = useRouter();
   const [tab, setTab] = useState<(typeof STATUS_TABS)[number]>("new");
   const [busy, setBusy] = useState<string | null>(null);
@@ -32,6 +41,7 @@ export function ListeningView({ connected, socialReady, keywords, results }: { c
   const [diag, setDiag] = useState<MetaDiagnosis | null>(null);
   const [links, setLinks] = useState("");
   const [problems, setProblems] = useState<string[]>([]);
+  const [onlyReal, setOnlyReal] = useState(false);
 
   // Deliberately separate from `run`: a diagnosis is not a mutation, it should
   // not refresh the page, and its result is a panel rather than a one-line message.
@@ -55,7 +65,15 @@ export function ListeningView({ connected, socialReady, keywords, results }: { c
   };
 
   const counts = STATUS_TABS.reduce((a, s) => ({ ...a, [s]: results.filter((r) => r.status === s).length }), {} as Record<string, number>);
-  const shown = results.filter((r) => r.status === tab);
+  // What the team has decided so far, against what Jev said: the evidence that it is learning the right line.
+  const judged = results.filter((r) => r.ai_class && (r.status === "actioned" || r.status === "dismissed"));
+  const flaggedReal = results.filter((r) => isLikelyReal(r.ai_class) && (r.status === "actioned" || r.status === "dismissed"));
+  const flaggedRealActed = flaggedReal.filter((r) => r.status === "actioned").length;
+  const shown = results
+    .filter((r) => r.status === tab)
+    .filter((r) => !onlyReal || isLikelyReal(r.ai_class))
+    // Likely-real first, likely-not-relevant last; otherwise newest first (the order the list arrived in).
+    .sort((a, b) => Number(isLikelyReal(b.ai_class)) - Number(isLikelyReal(a.ai_class)) || Number(a.ai_class === "not_relevant") - Number(b.ai_class === "not_relevant"));
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
@@ -128,6 +146,23 @@ export function ListeningView({ connected, socialReady, keywords, results }: { c
         </div>
       )}
       {msg && !diag && <p className="text-sm font-semibold text-purple">{msg}</p>}
+
+      {triageReady && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-surface px-4 py-3 text-sm">
+          <p className="text-ink">
+            <span className="font-bold">Jev is sorting captures.</span>{" "}
+            <span className="text-muted">
+              {judged.length > 0 && flaggedReal.length > 0
+                ? `Of the ${flaggedReal.length} it called real or abusive that you have decided on, you acted on ${flaggedRealActed}. It uses your recent decisions to judge the next ones.`
+                : "Act on or dismiss captures and it learns where you draw the line."}
+            </span>
+          </p>
+          <label className="inline-flex cursor-pointer items-center gap-2 text-xs font-semibold text-ink">
+            <input type="checkbox" checked={onlyReal} onChange={(e) => setOnlyReal(e.target.checked)} className="accent-[#734e9e]" />
+            Only likely real cases
+          </label>
+        </div>
+      )}
 
       {/* Social links */}
       <section className="rounded-2xl border border-line bg-surface p-5 shadow-[0_1px_2px_rgba(28,21,34,0.04)]">
@@ -213,6 +248,12 @@ export function ListeningView({ connected, socialReady, keywords, results }: { c
                   <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-bold uppercase ${SEV[r.severity] ?? SEV.low}`}>{r.severity}</span>
                   <span className="text-xs text-muted capitalize">{r.source} · {new Date(r.captured_at).toLocaleDateString()}</span>
                 </div>
+                {r.ai_class && AI_LABEL[r.ai_class] && (
+                  <p className={`mt-2 inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${AI_LABEL[r.ai_class].cls}`}>
+                    {AI_LABEL[r.ai_class].label}
+                    {typeof r.ai_confidence === "number" && <span className="opacity-70">{Math.round(r.ai_confidence * 100)}%</span>}
+                  </p>
+                )}
                 <p className="mt-2 text-sm text-ink line-clamp-4">{r.content}</p>
                 <div className="mt-2 flex flex-wrap gap-1">
                   {r.matched_keywords.map((w) => <span key={w} className="text-[11px] rounded bg-purple/10 text-purple px-1.5 py-0.5 font-semibold">{w}</span>)}

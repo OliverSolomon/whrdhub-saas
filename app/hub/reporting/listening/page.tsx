@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { metaConfigured } from "@/lib/meta";
 import { instagramConfigured } from "@/lib/social-fetch";
+import { triageConfigured } from "@/lib/listening-triage";
 import { ListeningView, type Keyword, type Result } from "@/components/reporting/listening/listening-view";
 
 export const metadata = { title: "Online Listening - WHRD Hub" };
@@ -10,15 +11,21 @@ export default async function ListeningPage() {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = createAdminClient() as any;
-  const [{ data: keywords }, { data: results }] = await Promise.all([
+  const base = "id, source, permalink, author, content, matched_keywords, severity, status, captured_at";
+  const [{ data: keywords }, withAi] = await Promise.all([
     db.from("listening_keywords").select("id, word, severity, active").order("word"),
-    db.from("listening_results").select("id, source, permalink, author, content, matched_keywords, severity, status, captured_at").order("captured_at", { ascending: false }).limit(100),
+    db.from("listening_results").select(`${base}, ai_class, ai_confidence`).order("captured_at", { ascending: false }).limit(150),
   ]);
+  // Until migration 017 is applied the ai_* columns do not exist; show the captures without them.
+  const results = withAi.error
+    ? (await db.from("listening_results").select(base).order("captured_at", { ascending: false }).limit(150)).data
+    : withAi.data;
 
   return (
     <ListeningView
       connected={metaConfigured()}
       socialReady={instagramConfigured()}
+      triageReady={triageConfigured()}
       keywords={(keywords ?? []) as Keyword[]}
       results={(results ?? []) as Result[]}
     />
