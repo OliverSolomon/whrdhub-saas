@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { ProfileClient } from "@/components/profile/profile-client";
 import { Suspense } from "react";
 import { listSessions } from "@/app/actions/sessions";
+import { loadCountyNetworks } from "@/lib/county-networks";
 import { Devices } from "@/components/account/devices";
 
 export const metadata = { title: "Profile — WHRD Hub" };
@@ -12,13 +13,13 @@ export default async function ProfilePage() {
   const supabase = await createClient();
   const uid = user!.id;
 
-  const [{ data: fem }, { data: posts }, { data: blogs }, { data: reactions }, { data: counties }] =
+  const [{ data: fem }, { data: posts }, { data: blogs }, { data: reactions }, counties] =
     await Promise.all([
       supabase.from("mentorship_profiles").select("*").eq("user_id", uid).maybeSingle(),
       supabase.from("posts").select("id, body, status, created_at").eq("author_id", uid).order("created_at", { ascending: false }),
       supabase.from("blogs").select("id, title, slug, status, created_at").eq("author_id", uid).order("created_at", { ascending: false }),
       supabase.from("post_reactions").select("post_id, posts(id, body, is_hub, status)").eq("user_id", uid).limit(50),
-      supabase.from("county_networks").select("id, name, is_active").order("is_active", { ascending: false }).order("name"),
+      loadCountyNetworks(),
     ]);
 
   const reactedPosts = (reactions ?? [])
@@ -36,7 +37,7 @@ export default async function ProfilePage() {
         county_network_id: user?.profile?.county_network_id ?? "",
       }}
       femtorship={fem ?? null}
-      counties={counties ?? []}
+      counties={counties}
       posts={posts ?? []}
       blogs={blogs ?? []}
       reactedPosts={reactedPosts}
