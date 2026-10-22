@@ -2,6 +2,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { metaConfigured } from "@/lib/meta";
 import { instagramConfigured } from "@/lib/social-fetch";
 import { triageConfigured } from "@/lib/listening-triage";
+import type { Source } from "@/lib/listening-sources";
 import { ListeningView, type Keyword, type Result } from "@/components/reporting/listening/listening-view";
 
 export const metadata = { title: "Online Listening - WHRD Hub" };
@@ -21,11 +22,18 @@ export default async function ListeningPage() {
     ? (await db.from("listening_results").select(base).order("captured_at", { ascending: false }).limit(150)).data
     : withAi.data;
 
+  // Until migration 018 is applied the table does not exist; show none rather than fail.
+  const { data: sources } = await db
+    .from("listening_sources")
+    .select("id, platform, kind, handle, note, active, last_scanned_at, last_result")
+    .order("created_at", { ascending: false });
+
   return (
     <ListeningView
       connected={metaConfigured()}
       socialReady={instagramConfigured()}
       triageReady={triageConfigured()}
+      sources={(sources ?? []) as Source[]}
       keywords={(keywords ?? []) as Keyword[]}
       results={(results ?? []) as Result[]}
     />

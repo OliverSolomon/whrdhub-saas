@@ -199,3 +199,25 @@ export async function escalateOverdue(): Promise<{ checked: number; escalated: n
   }
   return { checked: (data ?? []).length, escalated };
 }
+
+/**
+ * Tell the response team something that is not about one report: in-app and
+ * push, no email. Skipped if the same notice was already sent in the last day.
+ */
+export async function broadcastToStaff(m: { type: string; title: string; body: string; path: string; tag: string }): Promise<boolean> {
+  try {
+    const since = new Date(Date.now() - 24 * 3600_000).toISOString();
+    const { data: dup } = await db().from("notifications").select("id").eq("type", m.type).eq("title", m.title).gt("created_at", since).limit(1);
+    if (dup?.length) return false;
+    const ids = (await staff()).map((p) => p.id);
+    if (!ids.length) return false;
+    await db().from("notifications").insert(
+      ids.map((user_id) => ({ user_id, type: m.type, title: m.title, body: m.body, link: m.path, content_type: "listening" })),
+    );
+    await pushTo(ids, { title: m.title, body: m.body, url: m.path, tag: m.tag });
+    return true;
+  } catch (err) {
+    console.error("[alerts] broadcast failed", err);
+    return false;
+  }
+}

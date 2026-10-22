@@ -5,7 +5,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { requireReportingAdmin } from "@/lib/reporting-access";
 import { fetchRecentContent, metaConfigured, metaDiagnose, type MetaDiagnosis } from "@/lib/meta";
 import { ingestItems } from "@/lib/listening";
-import { readSocialLink, socialEnabled } from "@/lib/social-fetch";
+import { readSocialLink, socialEnabled, validHandle } from "@/lib/social-fetch";
+import { scanSources } from "@/lib/listening-sources";
 import { POLITICAL_HARASSMENT_KEYWORDS } from "@/lib/political-harassment";
 import type { RawItem } from "@/lib/meta";
 
@@ -123,4 +124,41 @@ export async function seedPoliticalKeywords() {
   }
   revalidatePath("/hub/reporting/listening");
   return { ok: true, added: fresh.length };
+}
+
+/* ── Watched Instagram accounts and hashtags ─────────────────────────────── */
+
+export async function addSource(kind: "profile" | "hashtag", raw: string, note?: string) {
+  if (!(await requireAdmin())) return { error: "Admins only." };
+  const handle = raw.trim().replace(/^[@#]/, "").replace(/^https?:\/\/(www\.)?instagram\.com\/(explore\/tags\/)?/i, "").replace(/\/.*$/, "");
+  if (!validHandle(handle)) return { error: "That does not look like an Instagram handle or hashtag." };
+  const { error } = await db().from("listening_sources").insert({ platform: "instagram", kind, handle, note: note?.trim() || null });
+  if (error) return { error: error.message.includes("duplicate") ? "You are already watching that." : error.message };
+  revalidatePath("/hub/reporting/listening");
+  return { ok: true };
+}
+
+export async function toggleSource(id: string, active: boolean) {
+  if (!(await requireAdmin())) return { error: "Admins only." };
+  const { error } = await db().from("listening_sources").update({ active }).eq("id", id);
+  if (error) return { error: error.message };
+  revalidatePath("/hub/reporting/listening");
+  return { ok: true };
+}
+
+export async function removeSource(id: string) {
+  if (!(await requireAdmin())) return { error: "Admins only." };
+  const { error } = await db().from("listening_sources").delete().eq("id", id);
+  if (error) return { error: error.message };
+  revalidatePath("/hub/reporting/listening");
+  return { ok: true };
+}
+
+/** Scan the watched sources now (the daily job does the same). */
+export async function scanSourcesNow() {
+  if (!(await requireAdmin())) return { error: "Admins only." };
+  const r = await scanSources();
+  revalidatePath("/hub/reporting/listening");
+  if (r.message) return { error: r.message };
+  return { ok: true, scanned: r.read, stored: r.stored };
 }

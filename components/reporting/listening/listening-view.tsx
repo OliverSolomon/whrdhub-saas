@@ -5,8 +5,9 @@ import {
   RadioTower, RefreshCw, Loader2, Plus, X, Circle, Plug, ExternalLink,
   Check, EyeOff, Search, Stethoscope, AlertTriangle, Link2, ShieldAlert,
 } from "lucide-react";
-import { pollMeta, scanSocialLinks, seedPoliticalKeywords, addKeyword, removeKeyword, toggleKeyword, setResultStatus, diagnoseMeta } from "@/app/actions/listening";
+import { pollMeta, scanSocialLinks, seedPoliticalKeywords, addSource, toggleSource, removeSource, scanSourcesNow, addKeyword, removeKeyword, toggleKeyword, setResultStatus, diagnoseMeta } from "@/app/actions/listening";
 import type { MetaDiagnosis } from "@/lib/meta";
+import type { Source } from "@/lib/listening-sources";
 import { useRouter } from "next/navigation";
 
 export interface Keyword { id: string; word: string; severity: string; active: boolean }
@@ -31,7 +32,7 @@ const SEV: Record<string, string> = {
 };
 const STATUS_TABS = ["new", "reviewing", "actioned", "dismissed"] as const;
 
-export function ListeningView({ connected, socialReady, triageReady, keywords, results }: { connected: boolean; socialReady: boolean; triageReady: boolean; keywords: Keyword[]; results: Result[] }) {
+export function ListeningView({ connected, socialReady, triageReady, sources, keywords, results }: { connected: boolean; socialReady: boolean; triageReady: boolean; sources: Source[]; keywords: Keyword[]; results: Result[] }) {
   const router = useRouter();
   const [tab, setTab] = useState<(typeof STATUS_TABS)[number]>("new");
   const [busy, setBusy] = useState<string | null>(null);
@@ -42,6 +43,8 @@ export function ListeningView({ connected, socialReady, triageReady, keywords, r
   const [links, setLinks] = useState("");
   const [problems, setProblems] = useState<string[]>([]);
   const [onlyReal, setOnlyReal] = useState(false);
+  const [srcKind, setSrcKind] = useState<"profile" | "hashtag">("profile");
+  const [srcValue, setSrcValue] = useState("");
 
   // Deliberately separate from `run`: a diagnosis is not a mutation, it should
   // not refresh the page, and its result is a panel rather than a one-line message.
@@ -186,6 +189,47 @@ export function ListeningView({ connected, socialReady, triageReady, keywords, r
             {problems.map((p) => <li key={p}>{p}</li>)}
           </ul>
         )}
+      </section>
+
+      {/* Watched accounts and hashtags */}
+      <section className="rounded-2xl border border-line bg-surface p-5 shadow-[0_1px_2px_rgba(28,21,34,0.04)]">
+        <h2 className="font-bold text-ink flex items-center gap-2"><RadioTower className="w-4 h-4 text-purple" /> Watched accounts and hashtags</h2>
+        <p className="text-xs text-muted mt-1">
+          Their latest public Instagram posts are read once a day, sorted like everything else, and you are warned when several captured posts name the same person.
+          {!socialReady && " Instagram is not connected yet: add APIFY_TOKEN."}
+        </p>
+        <ul className="mt-3 divide-y divide-line rounded-xl border border-line">
+          {sources.length === 0 && <li className="p-3 text-sm text-muted">Nothing watched yet.</li>}
+          {sources.map((s) => (
+            <li key={s.id} className="flex flex-wrap items-center gap-3 p-3">
+              <span className={`text-sm font-semibold ${s.active ? "text-ink" : "text-muted line-through"}`}>
+                {s.kind === "hashtag" ? "#" : "@"}{s.handle}
+              </span>
+              <span className="text-xs text-muted">
+                {s.last_scanned_at ? `Scanned ${new Date(s.last_scanned_at).toLocaleDateString()} · ${s.last_result ?? ""}` : "Not scanned yet"}
+              </span>
+              <span className="ml-auto flex items-center gap-2">
+                <button onClick={() => run(`ts-${s.id}`, () => toggleSource(s.id, !s.active))} className="text-xs font-semibold text-purple hover:underline">{s.active ? "Pause" : "Resume"}</button>
+                <button onClick={() => run(`rs-${s.id}`, () => removeSource(s.id))} className="text-xs font-semibold text-rose-600 hover:underline">Remove</button>
+              </span>
+            </li>
+          ))}
+        </ul>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <select value={srcKind} onChange={(e) => setSrcKind(e.target.value as "profile" | "hashtag")} className="h-9 rounded-lg border border-line bg-surface px-2 text-sm">
+            <option value="profile">Account</option><option value="hashtag">Hashtag</option>
+          </select>
+          <input value={srcValue} onChange={(e) => setSrcValue(e.target.value)} placeholder={srcKind === "hashtag" ? "e.g. endfemicideke" : "e.g. an account name"}
+            className="h-9 min-w-0 flex-1 rounded-lg border border-line bg-surface px-3 text-sm focus:outline-none focus:ring-2 focus:ring-purple/30" />
+          <button onClick={() => run("addsrc", async () => { const r = await addSource(srcKind, srcValue); if (!r?.error) setSrcValue(""); return r; })}
+            disabled={busy !== null || !srcValue.trim()} className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 h-9 text-sm font-semibold hover:bg-paper disabled:opacity-50">
+            {busy === "addsrc" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Watch
+          </button>
+          <button onClick={() => run("scansrc", scanSourcesNow)} disabled={busy !== null || sources.length === 0}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-purple text-white px-3 h-9 text-sm font-bold hover:bg-purple/90 disabled:opacity-50">
+            {busy === "scansrc" ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} Scan now
+          </button>
+        </div>
       </section>
 
       {/* Keyword manager */}

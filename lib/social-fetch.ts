@@ -138,6 +138,35 @@ export async function instagramPost(raw: string): Promise<SocialResult> {
   }
 }
 
+const HANDLE = /^[A-Za-z0-9._]{1,30}$/;
+export const validHandle = (h: string) => HANDLE.test(h);
+
+/**
+ * The latest public posts on a watched Instagram profile or hashtag. One
+ * provider run per call, so callers keep the number of sources small. Only the
+ * public caption and author are read.
+ */
+export async function recentInstagramPosts(kind: "profile" | "hashtag", handle: string, limit = 10): Promise<SocialPost[]> {
+  if (!instagramConfigured() || !hasApify() || !HANDLE.test(handle)) return [];
+  const url = kind === "hashtag" ? `https://www.instagram.com/explore/tags/${handle}/` : `https://www.instagram.com/${handle}/`;
+  const items = await apifyItems({ directUrls: [url], resultsType: "posts", resultsLimit: Math.min(Math.max(limit, 1), 20), addParentData: false });
+  const posts: SocialPost[] = [];
+  for (const it of items) {
+    if (it.error || it.errorDescription) continue;
+    const id = trim(it.shortCode, 40) ?? trim(it.id, 40);
+    const text = trim(it.caption, 2000);
+    if (!id || !text) continue;
+    posts.push({
+      source: "instagram",
+      sourceId: id,
+      url: trim(it.url, 300) ?? `https://www.instagram.com/p/${id}/`,
+      author: trim(it.ownerUsername, 80) ?? trim(it.ownerFullName, 80),
+      text,
+    });
+  }
+  return posts;
+}
+
 /* ------------------------------------------------------------------ X */
 
 const X_STATUS = /^\/(?:[A-Za-z0-9_]{1,15}|i|web)\/status(?:es)?\/(\d{5,25})/;
