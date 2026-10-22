@@ -29,6 +29,12 @@ const colourFor = (count: number, max: number) => {
   return SCALE[step];
 };
 
+// CARTO Voyager with the project's key; without a key, fall back to the keyless light style.
+const CARTO_KEY = process.env.NEXT_PUBLIC_CARTO_API_KEY;
+const TILE_URL = CARTO_KEY
+  ? `https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png?key=${CARTO_KEY}`
+  : "https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png";
+
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z]/g, "");
 
 export function MapView({ reports }: { reports: MapReport[] }) {
@@ -78,7 +84,7 @@ export function MapView({ reports }: { reports: MapReport[] }) {
         mapInstanceRef.current = map;
 
         // A quiet base map, so the shading carries the message.
-        L.tileLayer("https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png", {
+        L.tileLayer(TILE_URL, {
           attribution: '© <a href="https://www.openstreetmap.org">OpenStreetMap</a> © <a href="https://carto.com/attributions">CARTO</a> · county boundaries: geoBoundaries',
           maxZoom: 12,
         }).addTo(map);
@@ -90,7 +96,7 @@ export function MapView({ reports }: { reports: MapReport[] }) {
           const layer = L.geoJSON(geo, {
             style: (f: { properties: { name: string } }) => ({
               fillColor: colourFor(counts.get(norm(f.properties.name)) ?? 0, max),
-              fillOpacity: 0.85,
+              fillOpacity: 0.72,
               color: "#ffffff",
               weight: 1,
             }),
