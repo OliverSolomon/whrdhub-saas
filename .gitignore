@@ -46,3 +46,6 @@ next-env.d.ts
 
 # Local test credentials (never commit)
 TEST_ACCOUNTS.md
+
+# Project handover docs and samples (local only)
+/docs/
