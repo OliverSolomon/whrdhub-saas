@@ -136,7 +136,7 @@ async function ReportDetail({ id }: { id: string }) {
 
   const voicePaths = ((report as { voice_note_paths?: string[] | null }).voice_note_paths ?? []).slice(0, 3);
   const voiceUrls: string[] = [];
-  const LINK_TTL = 900; // 15 minutes
+  const LINK_TTL = 1800; // 30 minutes
   const { data: { session: viewer } } = await supabase.auth.getSession();
   if (voicePaths.length) {
     const { data: signed } = await createAdminClient().storage.from("report-screenshots").createSignedUrls(voicePaths, LINK_TTL);
