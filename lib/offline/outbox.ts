@@ -16,9 +16,9 @@
  *           it appears in your feed immediately marked "Sending", and goes out
  *           by itself when the connection returns.
  *
- * Media is deliberately not queued. Uploading an attachment needs the network,
- * so an offline post is text; the composer says so rather than silently
- * dropping a photo.
+ * Photos, videos and documents chosen while offline are kept on the device as
+ * files (IndexedDB stores them natively) and uploaded first when the post is
+ * sent; the post then goes out with their links.
  */
 
 import type { ReportData } from "@/app/actions/report-submit";
@@ -30,8 +30,17 @@ const OUTBOX_STORE = "outbox";
 
 export type OutboxKind = "report" | "post";
 
+/** A file chosen offline, held until there is a connection to upload it. */
+export interface QueuedFile {
+  blob: Blob;
+  name: string;
+  type: string;
+}
+
 export interface QueuedPost {
   body: string;
+  /** Attachments waiting to be uploaded with the post. */
+  files?: QueuedFile[];
   /** Hub admins can pin; carried so an offline Hub post behaves the same. */
   pinned?: boolean;
 }

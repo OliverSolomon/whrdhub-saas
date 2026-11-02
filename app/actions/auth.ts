@@ -7,6 +7,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { generateUsername } from "@/lib/anonymous-username";
 import { safeNext, DEFAULT_NEXT } from "@/lib/safe-next";
 import { isStaffProfile, STAFF_HOME } from "@/lib/staff-landing";
+import { actionIp, rateLimit, tooMany } from "@/lib/rate-limit";
 
 /**
  * Signing in and signing up, on the server.
@@ -86,6 +87,14 @@ export async function signIn(_prev: AuthState, formData: FormData): Promise<Auth
     return { error: "Enter your email and password." };
   }
 
+  // Guessing passwords: 8 tries per address and 40 per network every 15 minutes.
+  const ip = await actionIp();
+  const [byAccount, byNetwork] = await Promise.all([
+    rateLimit(`signin:${ip}:${email.toLowerCase()}`, 900, 8),
+    rateLimit(`signin-ip:${ip}`, 900, 40),
+  ]);
+  if (!byAccount.ok || !byNetwork.ok) return { error: tooMany(Math.max(byAccount.retryAfter, byNetwork.retryAfter)) };
+
   const supabase = await createClient();
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
@@ -131,6 +140,8 @@ export async function signUp(_prev: AuthState, formData: FormData): Promise<Auth
   if (password.length < 8) {
     return { error: "Please choose a password of at least eight characters." };
   }
+  const signup = await rateLimit(`signup:${await actionIp()}`, 3600, 10);
+  if (!signup.ok) return { error: tooMany(signup.retryAfter) };
 
   const supabase = await createClient();
   const origin = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "");
@@ -176,6 +187,9 @@ export async function signUpAnonymous(_prev: AuthState, formData: FormData): Pro
   if (password.length < 8) {
     return { error: "Please choose a password of at least eight characters." };
   }
+
+  const anon = await rateLimit(`anon-signup:${await actionIp()}`, 3600, 10);
+  if (!anon.ok) return { error: tooMany(anon.retryAfter) };
 
   const username = generateUsername();
   const email = `${username}@whrdhub.local`;
@@ -237,6 +251,11 @@ export async function requestPasswordReset(
 ): Promise<AuthState> {
   const email = String(formData.get("email") ?? "").trim();
   if (!email) return { error: "Enter the email address for your account." };
+
+  // Five requests an hour per network and three per address, so the form cannot be used to flood someone's inbox.
+  const ip = await actionIp();
+  const [reqIp, reqMail] = await Promise.all([rateLimit(`reset-ip:${ip}`, 3600, 5), rateLimit(`reset:${email.toLowerCase()}`, 3600, 3)]);
+  if (!reqIp.ok || !reqMail.ok) return { error: tooMany(Math.max(reqIp.retryAfter, reqMail.retryAfter)) };
 
   const supabase = await createClient();
   const origin = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "");

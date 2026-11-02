@@ -98,7 +98,6 @@ create table if not exists public.profiles (
   is_anonymous boolean DEFAULT true,
   user_type public.user_type_enum DEFAULT 'reporter'::public.user_type_enum,
   created_at timestamp with time zone DEFAULT now(),
-  onboarding_completed boolean DEFAULT false,
   accepted_terms_at timestamp with time zone,
   preferred_language text DEFAULT 'en'::text,
   full_name text,
@@ -125,7 +124,6 @@ alter table public.profiles
   add column if not exists is_anonymous boolean DEFAULT true,
   add column if not exists user_type public.user_type_enum DEFAULT 'reporter'::public.user_type_enum,
   add column if not exists created_at timestamp with time zone DEFAULT now(),
-  add column if not exists onboarding_completed boolean DEFAULT false,
   add column if not exists accepted_terms_at timestamp with time zone,
   add column if not exists preferred_language text DEFAULT 'en'::text,
   add column if not exists full_name text,
@@ -2378,7 +2376,7 @@ create policy comment_delete on public.post_comments for delete using (public.is
 -- ── Content audit log ────────────────────────────────────────────────────
 create policy audit_read on public.content_audit_log for select using (public.is_hub_admin());
 create policy audit_write on public.content_audit_log for insert to authenticated
-  with check (actor_id = auth.uid() or public.is_hub_admin());
+  with check (public.is_hub_admin() and actor_id = auth.uid());
 
 -- ── Notifications ────────────────────────────────────────────────────────
 create policy notif_read on public.notifications for select using (user_id = auth.uid());
@@ -2422,8 +2420,9 @@ create policy rs_own_read on public.report_services for select using (
 create policy rs_responders on public.report_services for all
   using (public.can_triage_reports()) with check (public.can_triage_reports());
 
-create policy ral_responders on public.report_audit_log for all
-  using (public.can_triage_reports()) with check (public.can_triage_reports());
+create policy ral_read   on public.report_audit_log for select using (public.can_triage_reports());
+create policy ral_insert on public.report_audit_log for insert
+  with check (public.can_triage_reports() and viewed_by = auth.uid());
 create policy ral_own_read on public.report_audit_log for select using (
   exists (select 1 from public.reports r where r.id = report_id and r.user_id = auth.uid())
 );
@@ -3368,3 +3367,66 @@ create policy mentor_verifications_own_read on public.mentor_verifications for s
 insert into storage.buckets (id, name, public, file_size_limit)
 values ('mentor-documents', 'mentor-documents', false, 10485760)
 on conflict (id) do nothing;
+
+
+-- ╔══════════════════════════════════════════════════════════════════════════╗
+-- ║  10. Security hardening                                                  ║
+-- ╚══════════════════════════════════════════════════════════════════════════╝
+
+-- 1. Where the application puts encrypted data ---------------------------------------------------
+-- The exact coordinates move into geo_enc (ciphertext). contact_hash is a keyed fingerprint of the
+-- reporter's phone number, so a USSD status check can find a report without storing the number.
+alter table public.reports add column if not exists geo_enc text;
+alter table public.reports add column if not exists contact_hash text;
+create index if not exists reports_contact_hash_idx on public.reports (contact_hash) where contact_hash is not null;
+
+-- 2. A rate limiter that works on serverless -----------------------------------------------------
+-- A counter held in a function's memory is lost between requests and not shared between instances,
+-- so the count lives here. One atomic upsert per call. Only the service role may call it.
+create table if not exists public.rate_limits (
+  key          text primary key,
+  window_start timestamptz not null default now(),
+  hits         integer not null default 0
+);
+alter table public.rate_limits enable row level security;   -- no policies: nobody but the service role
+
+create or replace function public.rate_limit_hit(p_key text, p_window_seconds integer, p_max integer)
+returns table (allowed boolean, remaining integer, retry_after integer)
+language plpgsql security definer set search_path = public as $$
+declare r public.rate_limits;
+begin
+  insert into public.rate_limits as rl (key, window_start, hits)
+  values (p_key, now(), 1)
+  on conflict (key) do update set
+    window_start = case when rl.window_start < now() - make_interval(secs => p_window_seconds) then now() else rl.window_start end,
+    hits         = case when rl.window_start < now() - make_interval(secs => p_window_seconds) then 1 else rl.hits + 1 end
+  returning * into r;
+  allowed     := r.hits <= p_max;
+  remaining   := greatest(p_max - r.hits, 0);
+  retry_after := case when allowed then 0
+                      else greatest(1, ceil(extract(epoch from (r.window_start + make_interval(secs => p_window_seconds) - now())))::integer) end;
+  return next;
+end $$;
+
+create or replace function public.purge_rate_limits() returns integer
+language sql security definer set search_path = public as $$
+  with d as (delete from public.rate_limits where window_start < now() - interval '1 day' returning 1)
+  select count(*)::integer from d;
+$$;
+
+revoke all on function public.rate_limit_hit(text, integer, integer) from public, anon, authenticated;
+revoke all on function public.purge_rate_limits() from public, anon, authenticated;
+do $$ begin
+  if exists (select 1 from pg_roles where rolname = 'service_role') then
+    grant execute on function public.rate_limit_hit(text, integer, integer) to service_role;
+    grant execute on function public.purge_rate_limits() to service_role;
+  end if;
+end $$;
+
+
+-- Audit logs: insert-only (the policies are in section 6).
+revoke update, delete, truncate on public.report_audit_log  from anon, authenticated;
+revoke update, delete, truncate on public.content_audit_log from anon, authenticated;
+
+-- Two onboarding flags existed and only hub_onboarded was ever read. Keep the one that drives the redirects.
+alter table public.profiles drop column if exists onboarding_completed;

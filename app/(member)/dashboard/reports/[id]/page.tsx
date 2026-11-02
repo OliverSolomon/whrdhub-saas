@@ -14,6 +14,7 @@ import { ReportRisksButton } from "@/components/reporting/report-risks-button";
 import { SafetyPlan } from "@/components/reporting/safety-plan";
 import { incidentLabel, riskLabel, supportLabel } from "@/lib/reporting-options";
 import { urgencyMeta } from "@/lib/urgency";
+import { openReport } from "@/lib/report-crypto";
 
 export const metadata = { title: "Report details — WHRD Hub" };
 
@@ -90,7 +91,7 @@ export default async function ReportDetailPage({
 
   // The user_id filter is belt-and-braces on top of RLS: a member may only
   // ever open their own report.
-  const { data: report, error } = await supabase
+  const { data: reportRow, error } = await supabase
     .from("reports")
     .select(
       `*,
@@ -103,7 +104,9 @@ export default async function ReportDetailPage({
     .eq("user_id", user.id)
     .single();
 
-  if (error || !report) return notFound();
+  if (error || !reportRow) return notFound();
+  // Sensitive fields are stored encrypted; open them on the server for the report's own owner.
+  const report = openReport(reportRow);
 
   // Matching runs the moment a report is filed, so support reaches the person
   // who needs it without waiting on a fact-check. Somebody describing an

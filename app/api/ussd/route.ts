@@ -1,7 +1,10 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { NextRequest, NextResponse, after } from "next/server";
 import { alertOnReport } from "@/lib/alerts";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { blindIndex, sealValue } from "@/lib/crypto";
+import { sealReport } from "@/lib/report-crypto";
+import { rateLimit } from "@/lib/rate-limit";
 import { INCIDENT_TYPES, KENYA_COUNTIES, OTHER_COUNTRIES, countryOf } from "@/lib/reporting-options";
 
 // Africa's Talking USSD webhook. AT posts: sessionId, serviceCode, phoneNumber,
@@ -132,7 +135,7 @@ async function checkReport(phone: string, pin: string, lang: string): Promise<st
     .from("reports")
     .select("id, status, ussd_pin_hash, ussd_pin_attempts")
     .eq("channel", "ussd")
-    .eq("contact_value", phone)
+    .eq("contact_hash", blindIndex(phone))
     .not("ussd_pin_hash", "is", null)
     .is("deleted_at", null)
     .order("created_at", { ascending: false })
@@ -162,6 +165,11 @@ export async function POST(req: NextRequest) {
   const inputs = text ? text.split("*") : [];
   const lang = inputs[0] || "1";
   const L = sw(lang) ? "sw" : "en";
+
+  // One screen per key press, so 120 an hour per phone is many reports and checks. This stops a number being hammered.
+  if (phoneNumber && !(await rateLimit(`ussd:${blindIndex(phoneNumber)}`, 3600, 120)).ok) {
+    return reply(sw(lang) ? "END Maombi mengi sana. Jaribu tena baadaye au piga 1195." : "END Too many requests. Please try again later or call 1195.");
+  }
 
   // Incident type: "8" on the first page means "show more", which shifts every later answer by one.
   let at = 2;
@@ -244,7 +252,9 @@ export async function POST(req: NextRequest) {
       const { platform, link } = parsePlatform(platformRaw);
       const support = HELP_TYPES[helpChoice] ? [HELP_TYPES[helpChoice]] : [];
 
-      const row = {
+      const reportId = randomUUID();
+      const row = sealReport(reportId, {
+        id: reportId,
         user_id: userId,
         incident_types: [incident.value],
         description: explanation,
@@ -262,7 +272,7 @@ export async function POST(req: NextRequest) {
         verification_status: "pending",
         reporter_type: "anonymous",
         channel: "ussd",
-      };
+      });
       // Stored only when a PIN was set. If the follow-up columns are not there yet, file the report without them rather than lose it.
       const withPin = pin ? { ...row, ussd_pin_hash: hashPin(pin, phoneNumber) } : row;
       let { data: report, error: reportError } = await admin.from("reports").insert(withPin).select("id").single();
@@ -275,7 +285,9 @@ export async function POST(req: NextRequest) {
       }
 
       const { error: sessionError } = await admin.from("ussd_sessions").upsert({
-        session_id: sessionId, phone_number: phoneNumber, text_input: text,
+        session_id: sessionId,
+        phone_number: sealValue(phoneNumber, `ussd_sessions.phone_number.${sessionId}`),
+        text_input: sealValue(text, `ussd_sessions.text_input.${sessionId}`),
         current_step: "completed", report_id: report.id,
       }, { onConflict: "session_id" });
       // Only the confirmation SMS depends on this row; the report is already saved.

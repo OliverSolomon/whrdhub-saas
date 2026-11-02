@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { PushToggle } from "@/components/pwa/push-toggle";
 import { AdminDashboardClient, type Report } from "@/components/reporting/admin/dashboard-client";
+import { openReports } from "@/lib/report-crypto";
 
 async function AdminDashboardData() {
   const supabase = await createClient();
@@ -11,7 +12,7 @@ async function AdminDashboardData() {
     .select("id, incident_types, status, urgency, verification_status, reporter_type, county, created_at, description, perpetrator_type, channel")
     .is("deleted_at", null);
 
-  return <AdminDashboardClient reports={(reports ?? []) as Report[]} />;
+  return <AdminDashboardClient reports={openReports(reports) as unknown as Report[]} />;
 }
 
 export const metadata = { title: "Reporting dashboard — WHRD Hub" };

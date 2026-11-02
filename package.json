@@ -10,7 +10,8 @@
     "db:test": "bash scripts/db-test.sh",
     "prebuild": "node scripts/copy-pdf-worker.mjs",
     "predev": "node scripts/copy-pdf-worker.mjs",
-    "test:redirects": "node --experimental-strip-types --no-warnings scripts/safe-next.test.mts"
+    "test:redirects": "node --experimental-strip-types --no-warnings scripts/safe-next.test.mts",
+    "test:crypto": "node --experimental-strip-types --no-warnings scripts/crypto.test.mts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.5.2",

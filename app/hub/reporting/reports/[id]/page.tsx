@@ -23,6 +23,8 @@ import { extractTags } from "@/lib/hashtags";
 import { generaliseArea } from "@/lib/geo-privacy";
 import { suggestSupportCategory } from "@/lib/jev-uses";
 import { timeAgo } from "@/lib/utils";
+import { openReport } from "@/lib/report-crypto";
+import { logFileLinks, logReportView } from "@/lib/audit";
 
 const VERIFICATION_META: Record<string, { label: string; icon: React.ReactNode; variant: "info" | "success" | "destructive" | "warning" }> = {
   pending:         { label: "Pending fact-check", icon: <HelpCircle className="w-4 h-4" />, variant: "info" },
@@ -83,8 +85,10 @@ async function ReportDetail({ id }: { id: string }) {
   const access = await getReportingAccess();
   const canAdminister = !!access?.canAdminister;
 
-  const { data: report } = await supabase.from("reports").select("*").eq("id", id).single();
-  if (!report) notFound();
+  const { data: reportRow } = await supabase.from("reports").select("*").eq("id", id).single();
+  if (!reportRow) notFound();
+  // Sensitive fields are stored encrypted; open them here, on the server, for a signed-in responder only.
+  const report = openReport(reportRow);
 
   // reports.user_id references auth.users, not profiles - fetch profile separately.
   const { data: profileData } = report.user_id
@@ -132,8 +136,11 @@ async function ReportDetail({ id }: { id: string }) {
 
   const voicePaths = ((report as { voice_note_paths?: string[] | null }).voice_note_paths ?? []).slice(0, 3);
   const voiceUrls: string[] = [];
+  const LINK_TTL = 900; // 15 minutes
+  const { data: { session: viewer } } = await supabase.auth.getSession();
   if (voicePaths.length) {
-    const { data: signed } = await createAdminClient().storage.from("report-screenshots").createSignedUrls(voicePaths, 3600);
+    const { data: signed } = await createAdminClient().storage.from("report-screenshots").createSignedUrls(voicePaths, LINK_TTL);
+    if (viewer?.user) await logFileLinks(id, viewer.user.id, "voice_note", voicePaths.length, LINK_TTL);
     for (const s of signed ?? []) if (s.signedUrl) voiceUrls.push(s.signedUrl);
   }
 
@@ -143,8 +150,9 @@ async function ReportDetail({ id }: { id: string }) {
   if (evidencePaths.length) {
     const storagePaths = evidencePaths.filter((p) => !/^https?:/i.test(p));
     const signed = storagePaths.length
-      ? (await createAdminClient().storage.from("report-screenshots").createSignedUrls(storagePaths, 3600)).data ?? []
+      ? (await createAdminClient().storage.from("report-screenshots").createSignedUrls(storagePaths, LINK_TTL)).data ?? []
       : [];
+    if (storagePaths.length && viewer?.user) await logFileLinks(id, viewer.user.id, "evidence", storagePaths.length, LINK_TTL);
     const byPath = new Map(signed.map((s) => [s.path, s.signedUrl]));
     for (const p of evidencePaths) {
       const url = /^https?:/i.test(p) ? p : byPath.get(p);
@@ -164,7 +172,7 @@ async function ReportDetail({ id }: { id: string }) {
   const { data: { session } } = await supabase.auth.getSession();
   const user = session?.user;
   if (user) {
-    await supabase.from("report_audit_log").insert({ report_id: id, viewed_by: user.id, action: "viewed" });
+    await logReportView(id, user.id);
     const alertState = report as { alert_severity?: string | null; acknowledged_at?: string | null };
     if (alertState.alert_severity === "critical" && !alertState.acknowledged_at && access?.canTriage) {
       await createAdminClient().from("reports").update({ acknowledged_at: new Date().toISOString(), acknowledged_by: user.id }).eq("id", id);

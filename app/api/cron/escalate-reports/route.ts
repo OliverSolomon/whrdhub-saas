@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { timingSafeEqual } from "node:crypto";
 import { escalateOverdue } from "@/lib/alerts";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -18,6 +19,8 @@ function authorised(req: Request): boolean {
 export async function GET(req: Request) {
   if (!authorised(req)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
+    // Tidy the shared rate-limit counters while we are here (best effort).
+    await createAdminClient().rpc("purge_rate_limits").then(() => undefined, () => undefined);
     return NextResponse.json({ ok: true, ...(await escalateOverdue()) });
   } catch (e) {
     console.error("[cron] escalate-reports failed:", e);

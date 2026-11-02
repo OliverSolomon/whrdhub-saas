@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { requireReportingAdmin, requireReportingTriage } from "@/lib/reporting-access";
+import { sealReport } from "@/lib/report-crypto";
 
 export async function factCheckReport(
   reportId: string,
@@ -19,7 +20,7 @@ export async function factCheckReport(
   const supabase = await createClient();
   const user = { id: adminId };
 
-  const { error } = await supabase.from("reports").update({
+  const { error } = await supabase.from("reports").update(sealReport(reportId, {
     verification_status: data.verification_status as "pending" | "verified" | "unverified" | "needs_more_info",
     verification_notes: data.verification_notes,
     verified_by: user.id,
@@ -28,7 +29,7 @@ export async function factCheckReport(
     attack_nature: data.attack_nature as "coordinated" | "bot_assisted" | "organic" | "unknown",
     derogatory_words: data.derogatory_words,
     status: data.verification_status === "verified" ? "under_review" : "submitted",
-  }).eq("id", reportId);
+  })).eq("id", reportId);
 
   if (error) return { error: error.message };
 
@@ -36,7 +37,7 @@ export async function factCheckReport(
     report_id: reportId,
     viewed_by: user.id,
     action: `fact_check:${data.verification_status}`,
-    notes: data.verification_notes,
+    notes: "Fact-check recorded",
   });
 
   revalidatePath(`/hub/reporting/reports/${reportId}`);
@@ -51,13 +52,13 @@ export async function verifyReport(reportId: string, status: string, notes: stri
   const supabase = await createClient();
   const user = { id: adminId };
 
-  const { error } = await supabase.from("reports").update({
+  const { error } = await supabase.from("reports").update(sealReport(reportId, {
     verification_status: status as "pending" | "verified" | "unverified" | "needs_more_info",
     verification_notes: notes,
     verified_by: user.id,
     verified_at: new Date().toISOString(),
     status: status === "verified" ? "under_review" : "submitted",
-  }).eq("id", reportId);
+  })).eq("id", reportId);
 
   if (error) return { error: error.message };
 

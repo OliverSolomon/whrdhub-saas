@@ -44,8 +44,14 @@ next-env.d.ts
 # Vendored from pdfjs-dist by scripts/copy-pdf-worker.mjs on every build.
 /public/pdf.worker.min.mjs
 
-# Local test credentials (never commit)
-TEST_ACCOUNTS.md
+# Local test credentials and personas (never commit)
+TEST_ACCOUNTS*
+test-accounts*
+test-personas*
+*personas*.md
+*credentials*
+*.secrets
+secrets/
 
 # Project handover docs and samples (local only)
 /docs/

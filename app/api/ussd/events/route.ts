@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { openValue } from "@/lib/crypto";
+import { clientIp, rateLimit } from "@/lib/rate-limit";
 
 // Africa's Talking USSD session-end notification (the "events" callback).
 // Set this URL as the Events/Notification callback on the live service code
@@ -25,9 +27,9 @@ async function sendSMS(to: string, message: string) {
 }
 
 export async function POST(req: NextRequest) {
+  if (!(await rateLimit(`ussd-events:${clientIp(req.headers)}`, 60, 120)).ok) return new NextResponse("", { status: 429 });
   const params = new URLSearchParams(await req.text());
   const sessionId = params.get("sessionId") || "";
-  const phoneNumber = params.get("phoneNumber") || "";
 
   try {
     const admin = createAdminClient();
@@ -38,9 +40,12 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (session?.report_id) {
-      const lang = session.text_input?.split("*")[0] || "1"; // step 0 = language
+      const text = openValue<string>(session.text_input, `ussd_sessions.text_input.${sessionId}`) ?? "";
+      const lang = text.split("*")[0] || "1"; // step 0 = language
       const ref = session.report_id.slice(0, 8).toUpperCase();
-      const to = phoneNumber || session.phone_number || "";
+      // Always the number stored when the report was filed, never one named in this request,
+      // so this endpoint cannot be used to send an SMS to an arbitrary phone.
+      const to = openValue<string>(session.phone_number, `ussd_sessions.phone_number.${sessionId}`) ?? "";
       if (to) {
         await sendSMS(to, lang === "2"
           ? `Ripoti yako WHRD Hub ${ref} imepokelewa. Tutafuatilia. Dharura: 1195.`

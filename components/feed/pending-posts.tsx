@@ -115,6 +115,11 @@ export function PendingPosts({
             <p className="whitespace-pre-wrap px-4 pb-4 text-[15px] leading-relaxed text-ink">
               {post.body}
             </p>
+            {post.files && post.files.length > 0 && (
+              <p className="px-4 pb-3 text-xs text-muted">
+                {post.files.length} {post.files.length === 1 ? "attachment" : "attachments"} will upload with it: {post.files.map((f) => f.name).join(", ")}
+              </p>
+            )}
             {item.lastError && item.attempts > 1 && (
               <p className="border-t border-line bg-paper px-4 py-2 text-xs text-muted">
                 Last attempt did not go through: {item.lastError}

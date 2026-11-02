@@ -2,14 +2,15 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, PenLine, BookOpen, Send, Youtube, Pin, FileEdit } from "lucide-react";
+import { Loader2, PenLine, BookOpen, Send, Youtube, Pin, FileEdit, Paperclip, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/field";
 import { cn } from "@/lib/utils";
 import { createPost, createBlog } from "@/app/actions/content";
 import { MediaUploader, type MediaItem } from "@/components/composer/media-uploader";
 import { RichText } from "@/components/editor/rich-text";
-import { enqueue, requestBackgroundSync } from "@/lib/offline/outbox";
+import { enqueue, requestBackgroundSync, type QueuedFile } from "@/lib/offline/outbox";
+import { MAX_UPLOAD_MB, tooLargeMessage } from "@/lib/upload-limits";
 import { useOnline } from "@/lib/use-online";
 
 export function Composer({ isHub = false, onDone }: { isHub?: boolean; onDone?: () => void }) {
@@ -24,6 +25,8 @@ export function Composer({ isHub = false, onDone }: { isHub?: boolean; onDone?: 
   const [gaps, setGaps] = useState("");
   const [nextSteps, setNextSteps] = useState("");
   const [media, setMedia] = useState<MediaItem[]>([]);
+  // Files picked while offline; they are uploaded when the post is sent.
+  const [offlineFiles, setOfflineFiles] = useState<QueuedFile[]>([]);
   const [youtube, setYoutube] = useState("");
   const [pin, setPin] = useState(false);
   // blog
@@ -47,7 +50,7 @@ export function Composer({ isHub = false, onDone }: { isHub?: boolean; onDone?: 
     .join("\n\n");
 
   const clear = () => {
-    setAchievement(""); setGaps(""); setNextSteps(""); setMedia([]); setYoutube(""); setPin(false);
+    setAchievement(""); setGaps(""); setNextSteps(""); setMedia([]); setOfflineFiles([]); setYoutube(""); setPin(false);
     setTitle(""); setExcerpt(""); setBlogBody(""); setCover([]);
   };
 
@@ -61,7 +64,7 @@ export function Composer({ isHub = false, onDone }: { isHub?: boolean; onDone?: 
     // story you cannot submit yet.
     if (!online && tab === "post") {
       try {
-        await enqueue("post", { body, pinned: isHub ? pin : undefined });
+        await enqueue("post", { body, files: offlineFiles.length ? offlineFiles : undefined, pinned: isHub ? pin : undefined });
         await requestBackgroundSync();
         setLoading(false);
         setDoneKind("queued");
@@ -135,10 +138,41 @@ export function Composer({ isHub = false, onDone }: { isHub?: boolean; onDone?: 
           {online ? (
             <MediaUploader value={media} onChange={setMedia} />
           ) : (
-            <p className="rounded-xl border border-dashed border-line bg-paper p-3 text-xs text-muted">
-              You are offline. Photos and files need a connection, so this post will go out
-              as text. It is saved here and sends itself when you reconnect.
-            </p>
+            <div className="rounded-xl border border-dashed border-line bg-paper p-3 text-xs text-muted">
+              <p>
+                You are offline. Photos and files you add are kept on this device and upload
+                when you reconnect, together with the post.
+              </p>
+              <label className="mt-2 inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-line bg-surface px-3 py-1.5 text-sm font-semibold text-ink hover:bg-purple-050">
+                <Paperclip className="h-4 w-4" /> Add photos or files
+                <input
+                  type="file"
+                  multiple
+                  accept="image/*,video/*,.pdf,.doc,.docx,.ppt,.pptx"
+                  className="sr-only"
+                  onChange={(e) => {
+                    const picked = Array.from(e.target.files ?? []);
+                    e.target.value = "";
+                    const tooBig = picked.find((f) => f.size > MAX_UPLOAD_MB * 1024 * 1024);
+                    if (tooBig) { setError(tooLargeMessage(tooBig.size)); return; }
+                    setError(null);
+                    setOfflineFiles((prev) => [...prev, ...picked.map((f) => ({ blob: f as Blob, name: f.name, type: f.type }))]);
+                  }}
+                />
+              </label>
+              {offlineFiles.length > 0 && (
+                <ul className="mt-2 space-y-1">
+                  {offlineFiles.map((f, i) => (
+                    <li key={`${f.name}-${i}`} className="flex items-center gap-2 text-ink">
+                      <span className="min-w-0 flex-1 truncate">{f.name}</span>
+                      <button type="button" aria-label={`Remove ${f.name}`} onClick={() => setOfflineFiles((prev) => prev.filter((_, j) => j !== i))} className="rounded-full p-1 hover:bg-rose-50 hover:text-rose-600">
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           )}
 
           {isHub && (

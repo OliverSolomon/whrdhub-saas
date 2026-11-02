@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { MapView, type MapReport } from "@/components/reporting/map-view";
 import { generaliseArea } from "@/lib/geo-privacy";
+import { openReports } from "@/lib/report-crypto";
 
 export const metadata = { title: "Incident map — WHRD Hub" };
 
@@ -10,7 +11,7 @@ async function MapData() {
   const { data: reports } = await supabase
     .from("reports")
     .select(
-      "id, latitude, longitude, incident_types, county, urgency, reporter_type, verification_status, created_at",
+      "id, latitude, longitude, geo_enc, incident_types, county, urgency, reporter_type, verification_status, created_at",
     )
     .is("deleted_at", null)
     .order("created_at", { ascending: false })
@@ -18,7 +19,7 @@ async function MapData() {
 
   // The exact point stays in the database. Only a wide area leaves the server,
   // so no coordinates ever reach the browser.
-  const safe: MapReport[] = (reports ?? []).map((r) => ({
+  const safe: MapReport[] = openReports(reports).map((r) => ({
     id: r.id as string,
     area: generaliseArea(r.latitude as number | null, r.longitude as number | null),
     incident_types: r.incident_types as string[] | null,
