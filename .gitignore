@@ -55,3 +55,6 @@ secrets/
 
 # Project handover docs and samples (local only)
 /docs/
+
+# Personal to-do list
+tasklist.md
