@@ -54,7 +54,13 @@ export interface AuthState {
  * perfectly correct being told it is wrong, for ever, with no way to work out
  * why. Sign-up already reveals the same fact, so nothing is lost by saying it.
  */
-function readableError(code: string | undefined, message: string): string {
+function readableError(code: string | undefined, message: string, status?: number): string {
+  // The backend refuses service outright (402) when the hosting plan's quota is
+  // spent. Its message names the plan and the meter, which is nothing a visitor
+  // can act on and not something to publish, so say only that the service is down.
+  if (status === 402) {
+    return "The platform is temporarily unavailable. Please try again later. If you are reporting urgently, contact the Hub directly.";
+  }
   switch (code) {
     case "invalid_credentials":
       return "Those details did not match an account. Check the email and password and try again.";
@@ -99,7 +105,7 @@ export async function signIn(_prev: AuthState, formData: FormData): Promise<Auth
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
   if (error) {
-    return { error: readableError(error.code, error.message) };
+    return { error: readableError(error.code, error.message, error.status) };
   }
 
   // Staff land in the console, not on the member dashboard. Sending an admin to
@@ -163,7 +169,7 @@ export async function signUp(_prev: AuthState, formData: FormData): Promise<Auth
   });
 
   if (error) {
-    return { error: readableError(error.code, error.message) };
+    return { error: readableError(error.code, error.message, error.status) };
   }
 
   // With email confirmation on, there is no session yet — the person has to
@@ -317,7 +323,7 @@ export async function updatePassword(
   }
 
   const { error } = await supabase.auth.updateUser({ password });
-  if (error) return { error: readableError(error.code, error.message) };
+  if (error) return { error: readableError(error.code, error.message, error.status) };
 
   // Revoke everywhere else, then here.
   await supabase.auth.signOut({ scope: "others" });
