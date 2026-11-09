@@ -5,7 +5,7 @@ import { SiteFooter } from "@/components/site-footer";
 import { createClient } from "@/lib/supabase/server";
 import { timeAgo } from "@/lib/utils";
 import { pageMeta } from "@/lib/seo";
-import { hubFile } from "@/lib/file-url";
+import { CoverImage } from "@/components/cover-image";
 
 export const metadata = pageMeta({
   title: "Stories",
@@ -55,8 +55,9 @@ export default async function BlogIndex() {
                   className="group rounded-2xl border border-line bg-surface overflow-hidden hover:shadow-md transition-shadow"
                 >
                   {b.cover_image_url ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={hubFile(b.cover_image_url)} alt="" className="h-40 w-full object-cover" />
+                    <div className="relative h-40 w-full">
+                      <CoverImage fill src={b.cover_image_url} sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw" className="object-cover" />
+                    </div>
                   ) : (
                     <div className="h-40 w-full brand-wash" />
                   )}

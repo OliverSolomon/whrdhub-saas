@@ -4,6 +4,7 @@ import { pageMeta } from "@/lib/seo";
 import { getPublishedNewsletters} from "@/lib/resources";
 import { resourceDate } from "@/lib/resource-types";
 import { hubFile } from "@/lib/file-url";
+import { CoverImage } from "@/components/cover-image";
 
 export const metadata = pageMeta({
   title: "Newsletter",
@@ -35,8 +36,7 @@ export default async function NewsletterPage() {
         <div className="grid lg:grid-cols-[minmax(0,340px)_1fr] gap-10 items-start">
           <div className="rounded-3xl overflow-hidden border border-line shadow-xl shadow-purple/10 bg-paper grid place-items-center">
             {latest.cover_image_url ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={hubFile(latest.cover_image_url)} alt={latest.title} className="w-full object-cover" />
+              <CoverImage src={latest.cover_image_url} alt={latest.title} sizes="(min-width: 1024px) 340px, 100vw" className="object-cover" />
             ) : (
               <Mail className="w-12 h-12 text-muted my-20" />
             )}
@@ -90,13 +90,13 @@ export default async function NewsletterPage() {
                 rel="noopener noreferrer"
                 className="group rounded-2xl border border-line bg-surface overflow-hidden hover:shadow-md transition-shadow flex flex-col"
               >
-                <div className="aspect-[3/4] bg-paper overflow-hidden grid place-items-center">
+                <div className="relative aspect-[3/4] bg-paper overflow-hidden grid place-items-center">
                   {n.cover_image_url ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={hubFile(n.cover_image_url)}
-                      alt=""
-                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                    <CoverImage
+                      fill
+                      src={n.cover_image_url}
+                      sizes="(min-width: 1024px) 25vw, (min-width: 640px) 50vw, 100vw"
+                      className="object-cover transition-transform duration-500 group-hover:scale-105"
                     />
                   ) : (
                     <Mail className="w-10 h-10 text-muted" />
