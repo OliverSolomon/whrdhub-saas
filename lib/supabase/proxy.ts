@@ -61,6 +61,8 @@ export async function updateSession(request: NextRequest) {
     "/files",
     // PWA plumbing.
     "/manifest.webmanifest", "/sw.js",
+    // Crawlers must be able to read the rules without signing in.
+    "/robots.txt",
   ];
   const path = request.nextUrl.pathname;
   const isPublic = publicPaths.some((p) => path === p || path.startsWith(p + "/"));
