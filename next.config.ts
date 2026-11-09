@@ -48,6 +48,18 @@ const nextConfig: NextConfig = {
       { source: "/:path*", headers: securityHeaders },
       // Pages that show a person's own data are never kept by a shared cache.
       { source: "/(dashboard|hub|profile|mentorship)/:path*", headers: [{ key: "Cache-Control", value: "private, no-store" }] },
+      // Stored publications. Search and AI crawlers were pulling every PDF and
+      // cover straight out of Supabase Storage, which is metered. `noai` and
+      // `noimageai` are honoured by dataset scrapers such as img2dataset. The
+      // cache header lets the CDN keep a file so repeat downloads do not each
+      // reach Supabase.
+      {
+        source: "/files/:path*",
+        headers: [
+          { key: "X-Robots-Tag", value: "noindex, noai, noimageai" },
+          { key: "Cache-Control", value: "public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800" },
+        ],
+      },
     ];
   },
 
@@ -75,6 +87,10 @@ const nextConfig: NextConfig = {
     ];
   },
   images: {
+    // Covers are resized once and the result kept for a month, so Supabase
+    // Storage is asked for the original rarely rather than once per visitor.
+    // Replacing a cover means uploading it under a new name.
+    minimumCacheTTL: 60 * 60 * 24 * 31,
     remotePatterns: [
       { protocol: "https", hostname: "whrdhub.org" },
       { protocol: "https", hostname: "*.supabase.co" },
