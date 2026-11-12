@@ -2,8 +2,11 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { cookies } from "next/headers";
+import { auth, authBaseUrl, siteOrigin } from "@/lib/auth/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { toFailure } from "@/lib/supabase/compat";
 import { generateUsername } from "@/lib/anonymous-username";
 import { safeNext, DEFAULT_NEXT } from "@/lib/safe-next";
 import { isStaffProfile, STAFF_HOME } from "@/lib/staff-landing";
@@ -32,6 +35,9 @@ import { actionIp, rateLimit, tooMany } from "@/lib/rate-limit";
  *   are not submittable from another site. A plain POST handler would have
  *   needed that built by hand.
  */
+
+/** Accounts made without an email get an address on this domain. It cannot receive mail. */
+const PLACEHOLDER_DOMAIN = "@whrdhub.local";
 
 export interface AuthState {
   error?: string;
@@ -111,11 +117,12 @@ export async function signIn(_prev: AuthState, formData: FormData): Promise<Auth
   // Staff land in the console, not on the member dashboard. Sending an admin to
   // /dashboard meant the member onboarding wall (or a second trip through the
   // login page) stood between them and the console, so signing in seemed to
-  // need doing twice. The profile is read with this same client: a fresh client
-  // would still see the request's old, signed-out cookies.
+  // need doing twice. The profile is read with the server's own client: the
+  // session cookie was only just set, so this request still carries the old,
+  // signed-out cookies and a per-person client would see nobody.
   let destination = next;
   if (next === DEFAULT_NEXT && data.user) {
-    const { data: profile } = await supabase
+    const { data: profile } = await createAdminClient()
       .from("profiles")
       .select("user_type, is_hub_admin")
       .eq("id", data.user.id)
@@ -146,36 +153,40 @@ export async function signUp(_prev: AuthState, formData: FormData): Promise<Auth
   if (password.length < 8) {
     return { error: "Please choose a password of at least eight characters." };
   }
+  if (email.toLowerCase().endsWith(PLACEHOLDER_DOMAIN)) {
+    return { error: "Please enter a valid email address." };
+  }
   const signup = await rateLimit(`signup:${await actionIp()}`, 3600, 10);
   if (!signup.ok) return { error: tooMany(signup.retryAfter) };
 
-  const supabase = await createClient();
-  const origin = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "");
-
-  const { data, error } = await supabase.auth.signUp({
-    email,
-    password,
-    options: {
-      // Carried into the profile by the handle_new_user trigger. Roles are never taken from here:
-      // the trigger decides user_type itself and only reads the kind of account being joined.
-      data: { full_name: fullName, account_kind: kind },
-      // Absolute, and from configuration rather than from the request: a
-      // confirmation link is emailed, so it cannot be relative, and it must not
-      // be built from anything a caller controls.
-      emailRedirectTo: origin
-        ? `${origin}/auth/callback?next=${kind === "reporter" ? "/dashboard/reports" : "/onboarding"}`
-        : undefined,
-    },
-  });
-
-  if (error) {
-    return { error: readableError(error.code, error.message, error.status) };
+  let userId: string | undefined;
+  try {
+    const { data, error } = await auth.signUp.email({
+      email,
+      password,
+      name: fullName || email.split("@")[0],
+    });
+    if (error) {
+      const f = toFailure(error);
+      return { error: readableError(f?.code, f?.message ?? "", f?.status) };
+    }
+    userId = (data as { user?: { id: string } } | null)?.user?.id;
+  } catch (e) {
+    const f = toFailure(e);
+    return { error: readableError(f?.code, f?.message ?? "", f?.status) };
   }
+  if (!userId) return { error: "Something went wrong. Please try again." };
 
-  // With email confirmation on, there is no session yet — the person has to
-  // follow the link. Say so rather than redirecting them into a wall.
-  if (!data.session) {
-    return { checkEmail: true };
+  // Create the profile. Roles are never taken from here: the handle_new_user
+  // trigger decides user_type itself and only reads the kind of account being joined.
+  const admin = createAdminClient();
+  const { error: registerError } = await admin.rpc("server_register_account", {
+    p_id: userId,
+    p_meta: { full_name: fullName, account_kind: kind },
+  });
+  if (registerError) console.error("[auth] could not create the profile", registerError.message);
+  else if (fullName) {
+    await admin.from("profiles").update({ full_name: fullName }).eq("id", userId).is("full_name", null);
   }
 
   revalidatePath("/", "layout");
@@ -198,9 +209,9 @@ export async function signUpAnonymous(_prev: AuthState, formData: FormData): Pro
   if (!anon.ok) return { error: tooMany(anon.retryAfter) };
 
   const username = generateUsername();
-  const email = `${username}@whrdhub.local`;
+  const email = `${username}${PLACEHOLDER_DOMAIN}`;
 
-  // Admin client so the account is created pre-confirmed: no mail is sent to an address that cannot receive it.
+  // Created by the server, so no mail is ever sent to an address that cannot receive it.
   const { error: createError } = await createAdminClient().auth.admin.createUser({
     email,
     password,
@@ -237,15 +248,30 @@ export async function signOut(): Promise<void> {
 
 /* ── Forgotten passwords ───────────────────────────────────────────────── */
 
+// Remembers, for fifteen minutes and in this browser only, which address asked
+// for a code. Kept in a cookie the page cannot read rather than in the URL, so
+// the address never lands in history, logs or a shared link.
+const RESET_COOKIE = "whrd_reset_for";
+
+/** The emailed-code endpoints of the sign-in service, called server to server. */
+function emailCode(path: string, body: Record<string, string>) {
+  return fetch(`${authBaseUrl()}${path}`, {
+    method: "POST",
+    headers: { "content-type": "application/json", origin: siteOrigin() },
+    body: JSON.stringify(body),
+    cache: "no-store",
+  });
+}
+
 /**
- * Ask for a reset link.
+ * Ask for a code to set a new password with.
  *
  * The reply is identical whether or not the address has an account, and it is
- * returned even when Supabase reports an error. That is deliberate: a form
- * that says "no account with that email" is an account-existence oracle, and
- * anyone can query it. On this platform the bare fact that a woman has an
- * account here can put her at risk, so the page must not confirm it — not by
- * wording, and not by succeeding for one address and failing for another.
+ * returned even when sending fails. That is deliberate: a form that says "no
+ * account with that email" is an account-existence oracle, and anyone can
+ * query it. On this platform the bare fact that a woman has an account here
+ * can put her at risk, so the page must not confirm it — not by wording, and
+ * not by succeeding for one address and failing for another.
  *
  * The one exception is rate limiting, which is said plainly. It reveals
  * nothing about any particular address and, withheld, leaves somebody
@@ -255,52 +281,65 @@ export async function requestPasswordReset(
   _prev: AuthState,
   formData: FormData,
 ): Promise<AuthState> {
-  const email = String(formData.get("email") ?? "").trim();
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
   if (!email) return { error: "Enter the email address for your account." };
 
   // Five requests an hour per network and three per address, so the form cannot be used to flood someone's inbox.
   const ip = await actionIp();
-  const [reqIp, reqMail] = await Promise.all([rateLimit(`reset-ip:${ip}`, 3600, 5), rateLimit(`reset:${email.toLowerCase()}`, 3600, 3)]);
+  const [reqIp, reqMail] = await Promise.all([rateLimit(`reset-ip:${ip}`, 3600, 5), rateLimit(`reset:${email}`, 3600, 3)]);
   if (!reqIp.ok || !reqMail.ok) return { error: tooMany(Math.max(reqIp.retryAfter, reqMail.retryAfter)) };
 
-  const supabase = await createClient();
-  const origin = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "");
+  // A code is only sent to an address that already has an account here.
+  // Asking the sign-in service for a code for an unknown address would create
+  // an account for it, and placeholder addresses cannot receive mail at all.
+  const { data: known } = await createAdminClient().from("profiles").select("id").eq("email", email).maybeSingle();
+  if (known && !email.endsWith(PLACEHOLDER_DOMAIN)) {
+    try {
+      const r = await emailCode("/email-otp/send-verification-otp", { email, type: "sign-in" });
+      // Logged for us, invisible to the person: a delivery failure is our problem
+      // to fix, not a signal to hand back about which addresses exist.
+      if (!r.ok) console.error("[auth] could not send a reset code, status", r.status);
+    } catch (e) {
+      console.error("[auth] could not send a reset code", toFailure(e)?.message);
+    }
+  }
 
-  const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    // Absolute and from configuration: this goes into an email, so it cannot
-    // be relative, and it must not be built from anything the caller sent.
-    redirectTo: origin ? `${origin}/auth/confirm?type=recovery` : undefined,
+  (await cookies()).set(RESET_COOKIE, email, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: 15 * 60,
   });
-
-  if (error?.code === "over_email_send_rate_limit" || error?.code === "over_request_rate_limit") {
-    return { error: "Too many requests just now. Please wait a few minutes and try again." };
-  }
-  if (error) {
-    // Logged for us, invisible to the person: an SMTP failure is our problem
-    // to fix, not a signal to hand back about which addresses exist.
-    console.error("[auth] password reset request failed", error.message);
-  }
-
   return { checkEmail: true };
 }
 
 /**
- * Set a new password, using the session a recovery link established.
+ * Set a new password, proving ownership of the address with the emailed code.
  *
  * Two things happen afterwards that matter more than the password change
- * itself. Every other session is revoked, because somebody resetting a
- * password may be doing it precisely because another person has access to the
- * account — leaving those sessions alive would make the reset cosmetic. And
- * she is sent to sign in again with the new password rather than being carried
- * straight in, so the change is confirmed by use.
+ * itself. Every session is revoked, because somebody resetting a password may
+ * be doing it precisely because another person has access to the account —
+ * leaving those sessions alive would make the reset cosmetic. And she is sent
+ * to sign in again with the new password rather than being carried straight
+ * in, so the change is confirmed by use.
  */
 export async function updatePassword(
   _prev: AuthState,
   formData: FormData,
 ): Promise<AuthState> {
+  const code = String(formData.get("code") ?? "").replace(/\s+/g, "");
   const password = String(formData.get("password") ?? "");
   const confirm = String(formData.get("confirm") ?? "");
+  const jar = await cookies();
+  const email = jar.get(RESET_COOKIE)?.value ?? "";
 
+  if (!email) {
+    return { error: "This reset request has expired. Request a new code and try again." };
+  }
+  if (!/^\d{6}$/.test(code)) {
+    return { error: "Enter the six-digit code from the email." };
+  }
   if (password.length < 8) {
     return { error: "Please choose a password of at least eight characters." };
   }
@@ -308,26 +347,32 @@ export async function updatePassword(
     return { error: "The two passwords do not match." };
   }
 
-  const supabase = await createClient();
+  // Guessing codes: ten tries per address every fifteen minutes.
+  const tries = await rateLimit(`reset-code:${email}`, 900, 10);
+  if (!tries.ok) return { error: tooMany(tries.retryAfter) };
 
-  // The recovery link is what put a session here. Without one there is nothing
-  // to update, and saying so plainly is more use than a generic failure.
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
-    return {
-      error:
-        "This reset link has expired or has already been used. Request a new one and try again.",
-    };
+  const wrongCode = "That code is not right, or it has expired. Check it, or request a new code.";
+  const admin = createAdminClient();
+  const { data: known } = await admin.from("profiles").select("id").eq("email", email).maybeSingle();
+  if (!known) return { error: wrongCode };
+
+  // The code signs her in; that is the proof the address is hers.
+  let userId: string | undefined;
+  // Asked of the sign-in service directly and without keeping its cookie: all
+  // that is wanted here is its answer about whose code this is.
+  try {
+    const r = await emailCode("/sign-in/email-otp", { email, otp: code });
+    if (r.ok) userId = ((await r.json()) as { user?: { id: string } }).user?.id;
+  } catch {
+    /* reported below */
   }
+  if (!userId || userId !== known.id) return { error: wrongCode };
 
-  const { error } = await supabase.auth.updateUser({ password });
-  if (error) return { error: readableError(error.code, error.message, error.status) };
+  // Sets the password and ends every session, including the one the code just opened.
+  const { error } = await admin.auth.admin.updateUserById(userId, { email, password });
+  if (error) return { error: "Could not save the new password just now. Please try again." };
 
-  // Revoke everywhere else, then here.
-  await supabase.auth.signOut({ scope: "others" });
-  await supabase.auth.signOut();
+  jar.delete(RESET_COOKIE);
 
   revalidatePath("/", "layout");
   redirect("/login?reset=1");
