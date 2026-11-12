@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { LANGUAGE_META, SUPPORTED, type Language } from "@/lib/i18n/translations";
+import { clientIp, rateLimit } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 
@@ -45,6 +46,16 @@ export async function POST(req: Request) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
+
+  // Anonymous accounts are free to make, so a sign-in is not a barrier: limit the account and the network.
+  const [byUser, byNetwork] = await Promise.all([
+    rateLimit(`chat:${user.id}`, 3600, 40),
+    rateLimit(`chat-ip:${clientIp(req.headers)}`, 3600, 120),
+  ]);
+  if (!byUser.ok || !byNetwork.ok) {
+    const wait = Math.max(byUser.retryAfter, byNetwork.retryAfter);
+    return NextResponse.json({ error: "You have sent a lot of messages. Please try again in a while." }, { status: 429, headers: { "Retry-After": String(wait) } });
   }
 
   const apiKey = process.env.OPENROUTER_API_KEY;

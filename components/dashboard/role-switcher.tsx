@@ -7,7 +7,7 @@ import { useAdminMode, setAdminMode } from "@/lib/admin-mode";
 /**
  * Toggle between the member dashboard and the Hub admin console. Only rendered
  * for accounts where profiles.is_hub_admin is true. The chosen mode is kept in
- * localStorage so it persists across sign-out (Sauti-style).
+ * localStorage so it persists across sign-out.
  *
  * variant "menu"  — a row inside the sidebar user dropdown.
  * variant "card"  — a standalone card for the profile page.

@@ -2,14 +2,17 @@ import { Suspense } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { ReportsCharts } from "@/components/reporting/admin/reports-charts";
 import { BarChart2 } from "lucide-react";
+import { openReports } from "@/lib/report-crypto";
 
 async function AnalyticsContent() {
   const supabase = await createClient();
 
-  const { data: reports } = await supabase
+  const { data: reportsRaw } = await supabase
     .from("reports")
     .select("id, incident_types, status, urgency, verification_status, reporter_type, county, attack_nature, derogatory_words, created_at")
     .is("deleted_at", null);
+  // Some words are stored encrypted; open them here, on the server.
+  const reports = openReports(reportsRaw);
 
   const total = reports?.length ?? 0;
 

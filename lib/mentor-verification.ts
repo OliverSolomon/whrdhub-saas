@@ -1,7 +1,7 @@
 /**
  * Mentor (femtor) verification. A mentor can optionally upload an ID and
- * accreditation documents; a Hub admin reviews them. The states follow Sauti
- * Salama's: nothing sent, under review, verified, or rejected with a reason.
+ * accreditation documents; a Hub admin reviews them. The states are:
+ * nothing sent, under review, verified, or rejected with a reason.
  */
 export const MENTOR_BUCKET = "mentor-documents";
 export const MAX_DOC_BYTES = 10 * 1024 * 1024;

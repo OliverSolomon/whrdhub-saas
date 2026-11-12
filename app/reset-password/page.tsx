@@ -37,6 +37,20 @@ export default function ResetPasswordPage() {
     >
       <form action={formAction} className="space-y-4">
         <div>
+          <Label htmlFor="code">Code from the email</Label>
+          <Input
+            id="code"
+            name="code"
+            type="text"
+            required
+            inputMode="numeric"
+            pattern="[0-9 ]*"
+            maxLength={7}
+            autoComplete="one-time-code"
+            placeholder="6 digits"
+          />
+        </div>
+        <div>
           <Label htmlFor="password">New password</Label>
           <Input
             id="password"
@@ -69,7 +83,7 @@ export default function ResetPasswordPage() {
             {state.error}{" "}
             {state.error.includes("expired") && (
               <Link href="/forgot-password" className="font-bold underline">
-                Request a new link
+                Request a new code
               </Link>
             )}
           </p>

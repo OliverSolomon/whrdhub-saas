@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 
 /**
- * Admin "view mode" toggle, modelled on Sauti Salama's role switcher.
+ * Admin "view mode" toggle (a role switcher).
  *
  * Whether an account *is* a Hub admin lives in the database (profiles.is_hub_admin).
  * Whether that admin is currently *viewing* the admin console is a device-local

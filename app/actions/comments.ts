@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentUser } from "@/lib/current-user";
 
-/** Comments on feed posts. Replies are one level deep. */
+/** Comments on feed posts. Replies are one level deep: a reply to a reply is attached to the comment at the top. */
 
 const MAX_LENGTH = 2000;
 
@@ -38,12 +38,27 @@ export async function addComment(postId: string, body: string, parentId?: string
   if (text.length > MAX_LENGTH) return { error: "That comment is too long." };
 
   const supabase = await createClient();
+
+  // A reply must answer a live comment on this same post, and is kept at one level.
+  let topLevelId: string | null = null;
+  let parentAuthorId: string | null = null;
+  if (parentId) {
+    const { data: parent } = await supabase
+      .from("post_comments")
+      .select("id, post_id, parent_id, author_id, deleted_at")
+      .eq("id", parentId)
+      .maybeSingle();
+    if (!parent || parent.deleted_at || parent.post_id !== postId) return { error: "That comment is no longer there." };
+    topLevelId = (parent.parent_id as string | null) ?? (parent.id as string);
+    parentAuthorId = (parent.author_id as string | null) ?? null;
+  }
+
   const { data, error } = await supabase
     .from("post_comments")
     .insert({
       post_id: postId,
       author_id: user.id,
-      parent_id: parentId ?? null,
+      parent_id: topLevelId,
       body: text,
     })
     .select("id")
@@ -57,7 +72,17 @@ export async function addComment(postId: string, body: string, parentId?: string
     .eq("id", postId)
     .maybeSingle();
   const authorId = post?.author_id as string | null;
-  if (authorId && authorId !== user.id) {
+  // Whoever was replied to hears about it first; the post's author is told as well unless it is the same person.
+  if (parentAuthorId && parentAuthorId !== user.id) {
+    await notify(
+      parentAuthorId,
+      "New reply to your comment",
+      `${user.profile?.full_name || "A member"}: ${text.slice(0, 80)}`,
+      "/feed",
+      data.id as string,
+    );
+  }
+  if (authorId && authorId !== user.id && authorId !== parentAuthorId) {
     await notify(
       authorId,
       "New comment on your post",

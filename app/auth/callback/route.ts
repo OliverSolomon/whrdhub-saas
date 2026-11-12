@@ -6,69 +6,54 @@ import { sendMail } from "@/lib/email/send";
 import { welcomeHtml, welcomeText, welcomeSubject } from "@/lib/email/welcome";
 
 /**
- * OAuth / email-confirmation callback. Supabase redirects here with a `code`
- * that we exchange for a session, then send the user on to onboarding (if they
- * have not completed it) or the dashboard.
+ * Where the browser lands after signing in with Google.
+ *
+ * By the time this runs the session already exists: the request guard
+ * (proxy.ts) completed the Google hand-off on the way in. What is left is the
+ * app's own bookkeeping -- make sure the person has a profile, greet a new
+ * member once, and send everyone to the right first page.
  */
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
-  const code = searchParams.get("code");
-  // Validated, not trusted. Built into `${origin}${next}` below, a value of
-  // "//evil.com" would have produced a protocol-relative URL and sent somebody
-  // who had just signed in to another site entirely.
   const next = safeNext(searchParams.get("next"));
 
-  if (code) {
-    const supabase = await createClient();
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
-    if (!error) {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("hub_onboarded, welcomed_at, full_name, user_type, is_hub_admin")
-          .eq("id", user.id)
-          .maybeSingle();
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.redirect(`${origin}/login?error=auth`);
 
-        // Somebody who signs in with Google is sent nothing by Supabase: the
-        // provider has already vouched for the address, so there is no
-        // confirmation email and no record in her inbox that the account
-        // exists. Send one, once. Marked before sending rather than after, so
-        // a slow provider and a refreshed page cannot produce two.
-        if (profile && !profile.welcomed_at && user.email) {
-          await supabase
-            .from("profiles")
-            .update({ welcomed_at: new Date().toISOString() })
-            .eq("id", user.id);
-          void sendWelcome(user.email, (profile.full_name as string) ?? null);
-        }
+  // A first Google sign-in has an account but no profile yet. Does nothing for everybody else.
+  const reporterChoice = next.startsWith("/dashboard/reports");
+  const { error: ensureError } = await supabase.rpc("ensure_account", {
+    p_account_kind: reporterChoice ? "reporter" : "member",
+  });
+  if (ensureError) console.error("[auth] could not create the profile", ensureError.message);
 
-        // Staff skip member onboarding and open the console by default.
-        const staff = isStaffProfile(profile);
-        // Someone who chose "just report" lands on their reports and is never pushed through chapter onboarding.
-        const reporterChoice = next.startsWith("/dashboard/reports");
-        if (reporterChoice && !staff && !profile?.hub_onboarded) {
-          // Best effort: Google sign-ups carry no kind of their own, so record the choice.
-          await supabase.from("profiles").update({ account_kind: "reporter" }).eq("id", user.id);
-        }
-        const dest = staff
-          ? (next === DEFAULT_NEXT ? STAFF_HOME : next)
-          : profile?.hub_onboarded || reporterChoice ? next : "/onboarding";
-        return NextResponse.redirect(`${origin}${dest}`);
-      }
-    }
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("hub_onboarded, welcomed_at, full_name, user_type, is_hub_admin")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  // A one-time welcome. Stamped first so a refresh of this URL cannot send it twice.
+  if (profile && !profile.welcomed_at && user.email) {
+    await supabase
+      .from("profiles")
+      .update({ welcomed_at: new Date().toISOString() })
+      .eq("id", user.id);
+    void sendWelcome(user.email, (profile.full_name as string) ?? null);
   }
 
-  return NextResponse.redirect(`${origin}/login?error=auth`);
+  const staff = isStaffProfile(profile);
+  // Somebody who chose "just report" on the way in is a reporter, not a chapter member.
+  if (reporterChoice && !staff && !profile?.hub_onboarded) {
+    await supabase.from("profiles").update({ account_kind: "reporter" }).eq("id", user.id);
+  }
+  const dest = staff
+    ? (next === DEFAULT_NEXT ? STAFF_HOME : next)
+    : profile?.hub_onboarded || reporterChoice ? next : "/onboarding";
+  return NextResponse.redirect(`${origin}${dest}`);
 }
 
-
-/**
- * Fire-and-forget: a welcome email must never delay or fail a sign-in.
- *
- * Deliberately not awaited by the caller. If it fails, it is logged inside
- * sendMail and the person is already where she was going.
- */
 async function sendWelcome(email: string, name: string | null) {
   const site = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ?? "";
   if (!site) return;

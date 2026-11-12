@@ -4,6 +4,7 @@ import { pageMeta } from "@/lib/seo";
 import { getPublishedResources, getPublishedNewsletters} from "@/lib/resources";
 import { resourceDate } from "@/lib/resource-types";
 import { hubFile } from "@/lib/file-url";
+import { CoverImage } from "@/components/cover-image";
 
 export const metadata = pageMeta({
   title: "Resources & Downloads",
@@ -42,13 +43,13 @@ export default async function ResourcesPage() {
               rel="noopener noreferrer"
               className="group rounded-2xl border border-line bg-surface overflow-hidden hover:shadow-md transition-shadow flex flex-col"
             >
-              <div className="aspect-[3/4] bg-paper overflow-hidden grid place-items-center">
+              <div className="relative aspect-[3/4] bg-paper overflow-hidden grid place-items-center">
                 {r.cover_image_url ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={hubFile(r.cover_image_url)}
-                    alt=""
-                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                  <CoverImage
+                    fill
+                    src={r.cover_image_url}
+                    sizes="(min-width: 1024px) 25vw, (min-width: 640px) 50vw, 100vw"
+                    className="object-cover transition-transform duration-500 group-hover:scale-105"
                   />
                 ) : (
                   <FileText className="w-10 h-10 text-muted" />
@@ -71,10 +72,9 @@ export default async function ResourcesPage() {
       {/* Newsletter highlight */}
       {latest && (
         <div className="mt-14 rounded-3xl border border-line bg-surface overflow-hidden grid sm:grid-cols-[200px_1fr]">
-          <div className="bg-paper grid place-items-center">
+          <div className="relative min-h-52 bg-paper grid place-items-center">
             {latest.cover_image_url ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={hubFile(latest.cover_image_url)} alt="" className="w-full h-full object-cover" />
+              <CoverImage fill src={latest.cover_image_url} sizes="(min-width: 640px) 200px, 100vw" className="object-cover" />
             ) : (
               <Mail className="w-8 h-8 text-muted" />
             )}

@@ -43,6 +43,8 @@ export interface FeedComment {
   author: FeedAuthor;
   created_at: string;
   mine: boolean;
+  /** The top-level comment this replies to, or null. Replies are one level deep. */
+  parent_id: string | null;
 }
 
 export interface FeedItem {
@@ -262,7 +264,7 @@ export async function getFeed(
       supabase.from("post_reactions").select("post_id, user_id").in("post_id", postIds),
       supabase
         .from("post_comments")
-        .select("id, post_id, author_id, body, created_at, deleted_at, guest_name, guest_title")
+        .select("id, post_id, author_id, parent_id, body, created_at, deleted_at, guest_name, guest_title")
         .in("post_id", postIds)
         .order("created_at", { ascending: true }),
     ]);
@@ -293,10 +295,13 @@ export async function getFeed(
       }
     }
 
+    // A reply goes when the comment it answers goes.
+    const removed = new Set((comments ?? []).filter((c) => c.deleted_at).map((c) => c.id as string));
     for (const c of comments ?? []) {
       const pid = c.post_id as string;
       const mine = !!userId && c.author_id === userId;
       if (c.deleted_at) continue;
+      if (c.parent_id && removed.has(c.parent_id as string)) continue;
       const author =
         (c.author_id && authorMap.get(c.author_id as string)) ||
         (c.guest_name
@@ -314,6 +319,7 @@ export async function getFeed(
         author,
         created_at: c.created_at as string,
         mine,
+        parent_id: (c.parent_id as string | null) ?? null,
       });
       commentsByPost.set(pid, list);
       commentTotals.set(pid, (commentTotals.get(pid) ?? 0) + 1);

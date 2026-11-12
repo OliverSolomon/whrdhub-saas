@@ -6,6 +6,7 @@ import { alertOnReport } from "@/lib/alerts";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { RISKS, SUPPORT_TYPES, countryOf } from "@/lib/reporting-options";
+import { openReport, sealReport } from "@/lib/report-crypto";
 
 /**
  * A reporter changing their own report afterwards: adding the risks they face,
@@ -58,7 +59,7 @@ export async function updateReportRisks(
 
   const { error } = await createAdminClient()
     .from("reports")
-    .update({ risks, support_needed: support, support_other: support.includes("other") ? other : null })
+    .update(sealReport(reportId, { risks, support_needed: support, support_other: support.includes("other") ? other : null }))
     .eq("id", reportId);
   if (error) return { error: "Could not save that just now. Please try again." };
 
@@ -111,7 +112,7 @@ export async function updateReportDetails(reportId: string, input: ReportDetails
     consent_to_followup: !!(method && clean(input.contact_value, 200)),
   };
 
-  const { error } = await createAdminClient().from("reports").update(changes).eq("id", reportId);
+  const { error } = await createAdminClient().from("reports").update(sealReport(reportId, changes)).eq("id", reportId);
   if (error) return { error: "Could not save that just now. Please try again." };
 
   await audit(reportId, own.userId, "Corrected report details");
@@ -129,9 +130,9 @@ export async function attachScreenshots(reportId: string, paths: string[]): Prom
   if (mine.length === 0) return { error: "No files to attach." };
 
   const admin = createAdminClient();
-  const { data: row } = await admin.from("reports").select("tfgbv_screenshot_urls").eq("id", reportId).maybeSingle();
-  const existing = ((row?.tfgbv_screenshot_urls as string[] | null) ?? []).filter(Boolean);
-  const { error } = await admin.from("reports").update({ tfgbv_screenshot_urls: [...new Set([...existing, ...mine])] }).eq("id", reportId);
+  const { data: row } = await admin.from("reports").select("id, tfgbv_screenshot_urls").eq("id", reportId).maybeSingle();
+  const existing = ((row ? openReport(row).tfgbv_screenshot_urls as string[] | null : null) ?? []).filter(Boolean);
+  const { error } = await admin.from("reports").update(sealReport(reportId, { tfgbv_screenshot_urls: [...new Set([...existing, ...mine])] })).eq("id", reportId);
   if (error) return { error: "Could not attach the files just now." };
   await audit(reportId, own.userId, "Attached evidence files");
   revalidatePath(`/dashboard/reports/${reportId}`);
@@ -146,7 +147,7 @@ export async function attachVoiceNote(reportId: string, paths: string[]): Promis
   const mine = paths.filter((p) => typeof p === "string" && p.startsWith(`${own.userId}/voice_`)).slice(0, 3);
   if (mine.length === 0) return { error: "No voice note to attach." };
 
-  const { error } = await createAdminClient().from("reports").update({ voice_note_paths: mine }).eq("id", reportId);
+  const { error } = await createAdminClient().from("reports").update(sealReport(reportId, { voice_note_paths: mine })).eq("id", reportId);
   if (error) return { error: "Could not attach the voice note just now." };
   await audit(reportId, own.userId, "Attached a voice note");
   revalidatePath(`/dashboard/reports/${reportId}`);

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 
 /**
- * Flat welcome greeting, styled like the Sauti Salama dashboard header: no card,
+ * Flat welcome greeting, styled like the dashboard header: no card,
  * no border, no rounded background, just the greeting on the page. It starts a
  * touch larger, then after 30 seconds settles into a compact one-line header so
  * it quietly steps out of the way.

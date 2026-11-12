@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentUser } from "@/lib/current-user";
+import { logMentorDocuments } from "@/lib/audit";
 import { Pill } from "@/components/ui/pill";
 import { MentorReview } from "@/components/mentorship/mentor-review";
 import { FEMTORSHIP_QUESTIONS } from "@/lib/data";
@@ -28,8 +29,9 @@ export default async function MentorPage({ params }: { params: Promise<{ id: str
 
   const docs = ((ver?.documents as MentorDoc[]) ?? []);
   const status = ((ver?.status as MentorStatus) ?? "not_submitted");
-  // Private files are opened through links that last an hour.
-  const signed = docs.length ? ((await db.storage.from(MENTOR_BUCKET).createSignedUrls(docs.map((d) => d.path), 3600)).data ?? []) : [];
+  // Private files are opened through links that last 30 minutes, and each time they are handed out it is logged.
+  const signed = docs.length ? ((await db.storage.from(MENTOR_BUCKET).createSignedUrls(docs.map((d) => d.path), 1800)).data ?? []) : [];
+  if (docs.length && me?.id) await logMentorDocuments(id, me.id, docs.length);
   const urls = new Map<string, string>((signed as { path: string; signedUrl: string }[]).map((s) => [s.path, s.signedUrl]));
   let reviewer: string | null = null;
   if (ver?.reviewed_by) {

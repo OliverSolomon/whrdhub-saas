@@ -4,6 +4,8 @@ import { useEffect } from "react";
 import { toast } from "@/components/ui/toast";
 import { submitReport, type ReportData } from "@/app/actions/report-submit";
 import { createPost } from "@/app/actions/content";
+import { createClient } from "@/lib/supabase/client";
+import type { MediaItem } from "@/components/composer/media-uploader";
 import { attachVoiceNote } from "@/app/actions/report-update";
 import { uploadReportVoiceNote } from "@/lib/supabase/storage";
 import {
@@ -58,7 +60,9 @@ export async function flushOutbox(): Promise<void> {
           if ((item.payload as ReportData).is_authenticated) break;
         } else {
           const post = item.payload as QueuedPost;
-          const result = await createPost(post.body, [], { pinned: post.pinned });
+          // Attachments chosen offline go up first; their links travel with the post.
+          const media = post.files?.length ? await uploadQueuedFiles(post.files) : [];
+          const result = await createPost(post.body, media, { pinned: post.pinned });
           if (result?.ok) {
             await removeFromOutbox(item.localId);
             postsSent += 1;
@@ -88,6 +92,24 @@ export async function flushOutbox(): Promise<void> {
   if (postsSent > 0) {
     toast.success(postsSent === 1 ? "Your post has been sent." : `${postsSent} posts have been sent.`);
   }
+}
+
+/** Upload files held in the outbox to the media bucket, the same place the composer's uploader uses. */
+async function uploadQueuedFiles(files: NonNullable<QueuedPost["files"]>): Promise<MediaItem[]> {
+  const supabase = createClient();
+  const { data } = await supabase.auth.getUser();
+  if (!data?.user) throw new Error("Sign in to send the attachments.");
+  const out: MediaItem[] = [];
+  for (const f of files) {
+    const safe = f.name.replace(/[^a-zA-Z0-9.\-_]/g, "_");
+    const path = `${data.user.id}/${Date.now()}-${safe}`;
+    const type = f.type || f.blob.type || "application/octet-stream";
+    const { error } = await supabase.storage.from("media").upload(path, f.blob, { upsert: false, contentType: type });
+    if (error) throw new Error(`Could not upload ${f.name}: ${error.message}`);
+    const { data: pub } = supabase.storage.from("media").getPublicUrl(path);
+    out.push({ type: type.startsWith("image/") ? "image" : type.startsWith("video/") ? "video" : "document", url: pub.publicUrl, name: f.name });
+  }
+  return out;
 }
 
 async function note(item: OutboxItem, error?: string) {

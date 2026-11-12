@@ -18,20 +18,24 @@ export default function ForgotPasswordPage() {
   // Anything else would let anyone test which addresses are registered here.
   if (state?.checkEmail) {
     return (
-      <AuthShell heading="Check your email" sub="If we have an account, a link is on its way">
+      <AuthShell heading="Check your email" sub="If we have an account, a code is on its way">
         <div className="rounded-2xl border border-line bg-surface p-6 text-center">
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-purple-050 text-purple">
             <MailCheck className="h-7 w-7" />
           </div>
           <p className="mt-4 text-sm text-muted">
-            If that address has an account with the Hub, we have sent it a link for setting a
-            new password. The link works once and expires after an hour.
+            If that address has an account with the Hub, we have sent it a six-digit code.
+            Enter it on the next page with your new password. The code works once and
+            expires after a few minutes.
           </p>
           <p className="mt-3 text-sm text-muted">
             Nothing arrived? Check your spam folder, and make sure you used the address you
             signed up with.
           </p>
-          <Button href="/login" variant="outline" className="mt-5 w-full">
+          <Button href="/reset-password" className="mt-5 w-full">
+            I have the code
+          </Button>
+          <Button href="/login" variant="outline" className="mt-2 w-full">
             Back to log in
           </Button>
         </div>
@@ -42,7 +46,7 @@ export default function ForgotPasswordPage() {
   return (
     <AuthShell
       heading="Forgotten your password?"
-      sub="We will email you a link to set a new one"
+      sub="We will email you a code to set a new one"
       footer={
         <>
           Remembered it?{" "}
@@ -79,7 +83,7 @@ export default function ForgotPasswordPage() {
           disabled={pending}
           className="inline-flex h-12 w-full items-center justify-center rounded-xl bg-purple text-sm font-bold text-white transition-colors hover:bg-purple-600 disabled:opacity-60"
         >
-          {pending ? <Loader2 className="h-5 w-5 animate-spin" /> : "Send the link"}
+          {pending ? <Loader2 className="h-5 w-5 animate-spin" /> : "Send the code"}
         </button>
       </form>
 

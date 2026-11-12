@@ -40,6 +40,16 @@ function LoginForm() {
           Your password has been changed. Sign in with the new one.
         </p>
       )}
+      {!justReset && (
+        <p className="mb-4 rounded-xl border border-line bg-paper px-3 py-2.5 text-xs leading-relaxed text-muted">
+          We have moved to a new sign-in system. If you joined with an email and password before
+          November 2026, set a new password once using{" "}
+          <Link href="/forgot-password" className="font-semibold text-purple-700">
+            Forgotten it?
+          </Link>{" "}
+          Google sign-in works as before.
+        </p>
+      )}
 
       <GoogleButton next={next} />
 

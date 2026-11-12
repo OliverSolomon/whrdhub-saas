@@ -6,6 +6,9 @@ import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { alertOnReport } from "@/lib/alerts";
 import { generateUsername } from "@/lib/anonymous-username";
+import { randomUUID } from "node:crypto";
+import { sealReport } from "@/lib/report-crypto";
+import { actionIp, rateLimit, tooMany } from "@/lib/rate-limit";
 
 export interface ReportData {
   // WHAT
@@ -64,6 +67,11 @@ export interface SubmitReportResult {
 }
 
 export async function submitReport(data: ReportData): Promise<SubmitReportResult> {
+  // Ten new reports an hour from one network is far more than a person or a shared phone files,
+  // and stops the open form being used to create accounts in bulk.
+  const limit = await rateLimit(`report:${await actionIp()}`, 3600, 10);
+  if (!limit.ok) return { success: false, error: tooMany(limit.retryAfter) };
+
   const supabase = await createClient();
 
   let userId: string;
@@ -108,7 +116,6 @@ export async function submitReport(data: ReportData): Promise<SubmitReportResult
       is_anonymous: true,
       user_type: "reporter",
       email: virtualEmail,
-      onboarding_completed: false,
     }, { onConflict: "id", ignoreDuplicates: false });
   }
 
@@ -123,9 +130,12 @@ export async function submitReport(data: ReportData): Promise<SubmitReportResult
     data.why_description  && `WHY: ${data.why_description}`,
   ].filter(Boolean).join("\n\n");
 
+  // The id is chosen here so it can be bound into every encrypted field.
+  const reportId = randomUUID();
   const { data: reportRow, error: reportError } = await insertClient
     .from("reports")
-    .insert([{
+    .insert([sealReport(reportId, {
+      id: reportId,
       user_id: userId,
       incident_types: data.incident_types,
       description: combinedDescription || data.description,
@@ -169,7 +179,7 @@ export async function submitReport(data: ReportData): Promise<SubmitReportResult
       verification_status: "pending",
       reporter_type:       data.reporter_type || "anonymous",
       channel:             "web",
-    }])
+    })])
     .select("id")
     .single();
 

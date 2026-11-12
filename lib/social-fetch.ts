@@ -3,7 +3,7 @@ import { isIP } from "node:net";
 
 /**
  * Public Instagram and X posts for online listening, read without logging in.
- * Adapted from Sauti Salama's social adapter and using the same keys: one link
+ * Uses the same keys as the other social adapters: one link
  * in, a few plain fields out (who posted, what they wrote, where it lives).
  * Nothing else is asked for or kept.
  *

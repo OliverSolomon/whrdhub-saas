@@ -40,13 +40,16 @@ async function ReportsList({ page, q, county, urgency, verif, reporter, channel,
   if (selfOnly && currentUserId) query = query.eq("user_id", currentUserId);
   if (match) query = query.eq("report_services.match_status", match);
 
-  // Search: a pasted case ID, or words from what was reported and where.
+  // Search: a pasted case ID, the 8-character reference given to the reporter, or a county.
+  // What was reported and where is stored encrypted, so it cannot be searched in the database.
   if (q) {
+    const ref = q.replace(/^#/, "").toLowerCase();
     if (UUID.test(q)) query = query.eq("id", q);
+    else if (/^[0-9a-f]{8}$/.test(ref)) query = query.gte("id", `${ref}-0000-0000-0000-000000000000`).lte("id", `${ref}-ffff-ffff-ffff-ffffffffffff`);
     else {
       // Characters that mean something inside a PostgREST filter are dropped rather than escaped.
       const safe = q.replace(/[,()%*\\]/g, " ").trim();
-      if (safe) query = query.or(`description.ilike.%${safe}%,county.ilike.%${safe}%,location_description.ilike.%${safe}%,perpetrator_detail.ilike.%${safe}%`);
+      if (safe) query = query.ilike("county", `%${safe}%`);
     }
   }
 
@@ -169,7 +172,7 @@ async function AdminReportsContent({ searchParams }: { searchParams: Promise<Rec
         <p className="text-sm text-muted">Review, fact-check and respond to what has been reported.</p>
       </header>
 
-      <UrlFilterBar presets={presets} filters={FILTERS(uniqueCounties)} searchPlaceholder="Search what was reported, a place, or a case ID" />
+      <UrlFilterBar presets={presets} filters={FILTERS(uniqueCounties)} searchPlaceholder="Search a case reference, a case ID, or a county" />
 
       <Suspense fallback={<div className="animate-pulse rounded-2xl border border-line bg-surface p-16 text-center text-sm text-muted">Loading reports…</div>}>
         <ReportsList

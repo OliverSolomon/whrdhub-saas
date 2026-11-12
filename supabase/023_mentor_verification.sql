@@ -1,5 +1,5 @@
 -- Mentor (femtor) verification: an optional ID and accreditation documents, reviewed by Hub admins.
--- Modelled on Sauti Salama: files in a private bucket, their metadata and review state in one row.
+-- Files in a private bucket, their metadata and review state in one row.
 -- Idempotent. Run once in the Supabase SQL editor (also safe to re-run).
 
 create table if not exists public.mentor_verifications (

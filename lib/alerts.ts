@@ -4,6 +4,7 @@ import { sendMail } from "@/lib/email/send";
 import { buildSafetyPlan } from "@/lib/abuse-profiles";
 import { incidentLabel } from "@/lib/reporting-options";
 import { decideYesNo, jevMayReadReports } from "@/lib/decide";
+import { openReport } from "@/lib/report-crypto";
 
 /**
  * Urgent-case alerts.
@@ -139,7 +140,7 @@ export async function alertOnReport(reportId: string): Promise<{ severity: "crit
       .eq("id", reportId)
       .is("deleted_at", null)
       .maybeSingle();
-    const r = data as ReportRow | null;
+    const r = (data ? openReport(data) : null) as ReportRow | null;
     if (!r) return { severity: "normal", alerted: false };
     if (r.alert_severity === "critical") return { severity: "critical", alerted: false };
 

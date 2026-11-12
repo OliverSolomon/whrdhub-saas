@@ -1,6 +1,8 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { decideChoice } from "@/lib/decide";
 import { KENYA_COUNTIES, OTHER_COUNTRIES } from "@/lib/reporting-options";
+import { randomUUID } from "node:crypto";
+import { sealReport } from "@/lib/report-crypto";
 
 /**
  * From a capture to a case. An administrator who takes on something found by
@@ -84,7 +86,9 @@ export async function createCaseFromCapture(
   const place = placeIn(content);
   const urgency = cap.severity === "high" ? "immediate" : cap.severity === "low" ? "no_rush" : "within_week";
 
-  const row = {
+  const newId = randomUUID();
+  const row = sealReport(newId, {
+    id: newId,
     incident_types: types,
     description: content,
     tfgbv_platform: PLATFORM[cap.source as string] ?? (cap.source as string),
@@ -102,7 +106,7 @@ export async function createCaseFromCapture(
     reporter_type: "anonymous",
     channel: "api",
     assigned_to: adminId,
-  };
+  });
 
   // source_capture_id exists only once migration 021 is applied; without it the case is still created.
   let { data: report, error } = await db().from("reports").insert({ ...row, source_capture_id: captureId }).select("id").single();
