@@ -18,10 +18,15 @@
 //   --map <file.json>   {"Name on disk.pdf": "publications/documents/<key>"} for files the names cannot match
 //   --all               also files no publication uses any more (old versions and duplicates)
 //   --replace           overwrite a file that is already in storage
-import { readFileSync, readdirSync, statSync } from "node:fs";
+//   --compress <MB>     shrink a PDF bigger than this the way the Hub's upload form does
+//                       (lib/pdf/shrink.ts), gentlest pass first; the smallest result is used
+//   --covers            a missing cover with no file is drawn from page one of its
+//                       publication's document, as the upload form does
+import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { basename, extname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
-import { S3Client, HeadObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, GetObjectCommand, HeadObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
 
 const manifest = JSON.parse(
   readFileSync(fileURLToPath(new URL("../data/file-links.json", import.meta.url)), "utf8"),
@@ -68,6 +73,57 @@ async function stored(file) {
   }
 }
 
+// Prepared files (compressed documents, drawn covers) are written here, never into the folder given.
+let scratch;
+const scratchFile = (name) => join((scratch ??= mkdtempSync(join(tmpdir(), "file-links-"))), name);
+
+/** The TypeScript the upload form uses, loaded only when compressing or drawing covers (Node 23.6+ runs it directly). */
+const pdfTools = async () => ({
+  ...(await import("../lib/pdf/shrink.ts")),
+  ...(await import("../lib/pdf/resample-node.ts")),
+  ...(await import("../lib/pdf/passes.ts")),
+  ...(await import("../lib/pdf/first-page-node.ts")),
+});
+
+/** Shrink a PDF over `limitBytes`, gentlest pass first, stopping at the first that fits. Returns the path to use. */
+async function compressed(source, limitBytes) {
+  const before = statSync(source).size;
+  if (before <= limitBytes || extname(source).toLowerCase() !== ".pdf") return source;
+  const { shrinkPdf, nodeResample, PASSES } = await pdfTools();
+  const original = new Uint8Array(readFileSync(source));
+  let best = null;
+  for (const pass of PASSES) {
+    process.stdout.write(`  compressing ${basename(source)} at ${pass.label}… `);
+    const result = await shrinkPdf(original.slice(), nodeResample, { maxEdge: pass.maxEdge, quality: pass.quality });
+    console.log(mb(result.bytesAfter));
+    if (!best || result.bytesAfter < best.bytesAfter) best = result;
+    if (result.bytesAfter <= limitBytes || result.imagesRewritten === 0) break;
+  }
+  if (!best || best.bytesAfter >= before) return source;
+  const out = scratchFile(basename(source));
+  writeFileSync(out, best.bytes);
+  return out;
+}
+
+/** Draw a cover from page one of a document, in the format the cover's address ends in. */
+async function drawnCover(cover, documentPath) {
+  const { renderFirstPageNode } = await pdfTools();
+  const ext = extname(cover.key).toLowerCase();
+  const format = ext === ".png" ? "png" : ext === ".webp" ? "webp" : "jpeg";
+  const { bytes } = await renderFirstPageNode(new Uint8Array(readFileSync(documentPath)), format);
+  const out = scratchFile(`cover-${basename(cover.key)}`);
+  writeFileSync(out, bytes);
+  return out;
+}
+
+/** Copy a stored object to a local file, for drawing a cover from a document already in storage. */
+async function download(file) {
+  const res = await s3().send(new GetObjectCommand({ Bucket: file.bucket, Key: file.key }));
+  const out = scratchFile(basename(file.key));
+  writeFileSync(out, await res.Body.transformToByteArray());
+  return out;
+}
+
 function walk(dir) {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) =>
     entry.isDirectory() ? walk(join(dir, entry.name)) : [join(dir, entry.name)],
@@ -103,7 +159,15 @@ async function restore() {
   const folder = args[1];
   if (!folder || folder.startsWith("--")) throw new Error("Give the folder that holds the files: restore <folder>");
   const apply = has("--apply");
-  const wanted = manifest.files.filter((f) => has("--all") || inUse(f));
+  const compressMb = valueOf("--compress");
+  if (compressMb !== undefined && !(Number(compressMb) > 0)) throw new Error("--compress needs a size in MB, e.g. --compress 15");
+  const limitBytes = compressMb ? Number(compressMb) * 1048576 : null;
+  // Documents first, so a cover drawn from page one can use the document just matched.
+  const isCover = (f) => f.key.startsWith("covers/");
+  const wanted = manifest.files.filter((f) => has("--all") || inUse(f)).sort((a, b) => isCover(a) - isCover(b));
+  const documentPaths = new Map();
+  const documentOf = (cover) =>
+    manifest.files.find((f) => !isCover(f) && f.usedBy.some((u) => u.as === "document" && cover.usedBy.some((c) => c.title === u.title)));
 
   const local = walk(folder).filter((p) => statSync(p).isFile());
   const byName = new Map();
@@ -136,6 +200,16 @@ async function restore() {
     const candidates = byPlain.get(plain(file.key) + ext) ?? [];
     let source = mapped.get(idOf(file)) ?? byName.get(basename(file.key));
     if (!source && candidates.length === 1) source = candidates[0];
+    let drawnFrom = null;
+    // Only for a cover that is actually missing: drawing one can mean downloading the whole document.
+    if (!source && has("--covers") && isCover(file) && inUse(file) && (has("--replace") || !(await stored(file)))) {
+      const doc = documentOf(file);
+      const docPath = doc && (documentPaths.get(idOf(doc)) ?? ((await stored(doc)) ? await download(doc) : null));
+      if (docPath) {
+        source = await drawnCover(file, docPath);
+        drawnFrom = basename(doc.key);
+      }
+    }
     if (!source && candidates.length > 1) {
       console.log("UNCLEAR ", idOf(file), "| several files match:", candidates.map((c) => basename(c)).join(", "), "| name one with --map");
       unmatched.push(file);
@@ -146,6 +220,9 @@ async function restore() {
       continue;
     }
     used.add(source);
+    const original = source;
+    if (limitBytes) source = await compressed(source, limitBytes);
+    if (!isCover(file)) documentPaths.set(idOf(file), source);
 
     const existing = await stored(file);
     if (existing && !has("--replace")) {
@@ -161,7 +238,10 @@ async function restore() {
       unmatched.push(file);
       continue;
     }
-    const note = `${basename(source)} (${mb(bytes)}, was ${mb(file.bytes)}) -> ${file.url}`;
+    const how = drawnFrom
+      ? `page one of ${drawnFrom}`
+      : source !== original ? `${basename(original)} compressed from ${mb(statSync(original).size)}` : basename(source);
+    const note = `${how} (${mb(bytes)}, was ${mb(file.bytes)}) -> ${file.url}`;
     if (!apply) {
       console.log("WOULD PUT", note);
       done++;
@@ -202,10 +282,12 @@ try {
   if (command === "check") await check();
   else if (command === "restore") await restore();
   else {
-    console.log("Usage: file-links.mjs check [--live] [--verbose] | restore <folder> [--apply] [--map file.json] [--all] [--replace]");
+    console.log("Usage: file-links.mjs check [--live] [--verbose] | restore <folder> [--apply] [--map file.json] [--all] [--replace] [--compress MB] [--covers]");
     process.exitCode = 2;
   }
 } catch (e) {
   console.error("Stopped:", e.message);
   process.exitCode = 2;
+} finally {
+  if (scratch) rmSync(scratch, { recursive: true, force: true });
 }

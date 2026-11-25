@@ -55,6 +55,28 @@ For a file whose name does not match, write a small JSON file and pass it with `
 { "Strategic plan (final).pdf": "publications/documents/1787906725825-WHRD_Hub_Strategic_Plan_Final__11_.pdf" }
 ```
 
+### Large documents and missing covers
+
+The files sent back are often the print originals, many times larger than the copy
+the site served (a 180 MB photo book had been an 11 MB file). Serving those in full
+is what used up the hosting quota before, so shrink them the same way the Hub's
+upload form does:
+
+```
+node --env-file=.env.local scripts/file-links.mjs restore <folder> --compress 15 --covers
+```
+
+- `--compress 15` shrinks any PDF over 15 MB, re-encoding its photographs and
+  leaving the text untouched, gentlest pass first. If even the most compact pass is
+  still over, the smallest result is used and the line says how big it is.
+- `--covers` draws a missing cover from page one of its publication's document,
+  as the upload form does when nobody supplies a cover. The image is written in the
+  format the cover's address ends in, because the address cannot change.
+
+Both need Node 23.6 or later (the script loads the upload form's TypeScript
+directly) and take a few minutes for a large photo book. Nothing is written into
+the folder you give; prepared files go to a temporary folder.
+
 When the list looks right, add `--apply` to upload. Then confirm:
 
 ```
